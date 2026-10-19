@@ -50,33 +50,34 @@ $table->index('uuid', 'users_uuid_hash_index', 'hash');
 - Services resolve the UUID to the numeric id before writing. Controllers never resolve it.
 - Responses expose `user_uuid`, never `user_id`.
 
-## Audit columns
+## Audit columns and timestamps
 
-- Every application table has `created_by`, `updated_by`, and `deleted_by`.
-- They are nullable `bigint`, the same type as `id`, and have no foreign key constraint:
+- Every application table has the audit columns `created_by`, `updated_by`, and `deleted_by`, plus `created_at`, `updated_at`, and `deleted_at`.
+- Add all of them with the project blueprint macro instead of repeating the columns in every migration:
+
+```php
+$table->timestampsWithAudit();
+```
+
+- The macro is registered in `AppServiceProvider::boot()` and expands to:
 
 ```php
 $table->unsignedBigInteger('created_by')->nullable();
 $table->unsignedBigInteger('updated_by')->nullable();
 $table->unsignedBigInteger('deleted_by')->nullable();
+$table->timestampsTz();
+$table->softDeletesTz();
+$table->index('deleted_at');
 ```
 
-- These are audit columns, not relations. Do not attach `constrained()` or any foreign key constraint.
-
+- The `_by` columns are nullable `bigint`, the same type as `id`, and are audit columns, not relations. Do not attach `constrained()` or any foreign key constraint.
 - The `HasAuditColumns` concern fills them from `Auth::id()`: `created_by` and `updated_by` on create, `updated_by` on update, `deleted_by` on soft delete, and clears `deleted_by` on restore.
 - They stay null for console and queue work because no actor is authenticated.
 - Mass deletes through the query builder (`Model::where(...)->delete()`) skip model events and leave `deleted_by` null. Use `Model::delete()` on an instance for audited models.
 
 ## Soft deletes
 
-- Soft-deletable models use the `SoftDeletes` trait and `softDeletesTz()` in the migration.
-- The `deleted_at` column always has an index so the default `whereNull('deleted_at')` filter stays fast:
-
-```php
-$table->softDeletesTz();
-$table->index('deleted_at');
-```
-
+- Soft-deletable models use the `SoftDeletes` trait. `timestampsWithAudit()` already adds `softDeletesTz()` and the `deleted_at` index, so the default `whereNull('deleted_at')` filter stays fast.
 - Unique columns that should be reusable after a soft delete use a partial unique index instead of `unique()`:
 
 ```php

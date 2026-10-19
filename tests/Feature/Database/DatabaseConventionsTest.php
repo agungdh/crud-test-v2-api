@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -9,6 +10,10 @@ beforeEach(function () {
     if (DB::connection()->getDriverName() !== 'pgsql') {
         $this->markTestSkipped('The database conventions are PostgreSQL specific.');
     }
+});
+
+it('provides the timestamps with audit blueprint macro', function () {
+    expect(Blueprint::hasMacro('timestampsWithAudit'))->toBeTrue();
 });
 
 it('stores every timestamp column with a time zone', function () {

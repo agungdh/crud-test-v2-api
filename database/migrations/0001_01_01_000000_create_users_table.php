@@ -20,14 +20,9 @@ return new class extends Migration
             $table->timestampTz('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
-            $table->unsignedBigInteger('created_by')->nullable();
-            $table->unsignedBigInteger('updated_by')->nullable();
-            $table->unsignedBigInteger('deleted_by')->nullable();
-            $table->timestampsTz();
-            $table->softDeletesTz();
+            $table->timestampsWithAudit();
 
             $table->index('uuid', 'users_uuid_hash_index', 'hash');
-            $table->index('deleted_at');
         });
 
         DB::statement('create unique index users_email_unique on users (email) where deleted_at is null');
