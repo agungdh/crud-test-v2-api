@@ -1,0 +1,57 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\ListPegawaiRequest;
+use App\Http\Requests\StorePegawaiRequest;
+use App\Http\Requests\UpdatePegawaiRequest;
+use App\Http\Resources\PegawaiResource;
+use App\Models\Pegawai;
+use App\Services\PegawaiService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+
+class PegawaiController extends Controller
+{
+    public function __construct(private PegawaiService $pegawaiService)
+    {
+        //
+    }
+
+    public function index(ListPegawaiRequest $request): AnonymousResourceCollection
+    {
+        return PegawaiResource::collection(
+            $this->pegawaiService->paginate($request->validated()),
+        );
+    }
+
+    public function store(StorePegawaiRequest $request): JsonResponse
+    {
+        $pegawai = $this->pegawaiService->create($request->validated());
+
+        return PegawaiResource::make($pegawai)
+            ->response()
+            ->setStatusCode(201);
+    }
+
+    public function show(Pegawai $pegawai): PegawaiResource
+    {
+        return PegawaiResource::make(
+            $this->pegawaiService->show($pegawai),
+        );
+    }
+
+    public function update(UpdatePegawaiRequest $request, Pegawai $pegawai): PegawaiResource
+    {
+        return PegawaiResource::make(
+            $this->pegawaiService->update($pegawai, $request->validated()),
+        );
+    }
+
+    public function destroy(Pegawai $pegawai): JsonResponse
+    {
+        $this->pegawaiService->delete($pegawai);
+
+        return response()->json(null, 204);
+    }
+}

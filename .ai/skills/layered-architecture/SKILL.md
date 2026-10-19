@@ -38,6 +38,13 @@ php artisan make:class Services/PostService --no-interaction
 php artisan make:resource PostResource --no-interaction
 ```
 
+Updates use `PUT` only. `Route::apiResource()` maps `update` to `PUT|PATCH`, so exclude it and register the PUT route explicitly:
+
+```php
+Route::apiResource('posts', PostController::class)->except('update');
+Route::put('posts/{post}', [PostController::class, 'update'])->name('posts.update');
+```
+
 ## Input contract
 
 The Service receives the output of `validated()`, never the `Request` object. Document the expected shape with an array shape in the PHPDoc so the type survives the array boundary.
@@ -54,6 +61,26 @@ public function create(array $data): Post
 ```
 
 Every endpoint that accepts input gets its own Form Request, including list endpoints with filters. Endpoints that only use route-model binding (like `show`) do not need one.
+
+## Update semantics (PUT only)
+
+`PUT` is a full replacement, not a partial one:
+
+- Mandatory fields use `required`.
+- Nullable fields use `present|nullable`, so the key must exist but the value may be `null`. A missing key fails with `422` instead of silently keeping the old value.
+- Password is the exception: `sometimes|nullable`; omitted or `null` leaves the stored password unchanged.
+- The Service writes every validated key, including explicit `null` values, inside one `DB::transaction()`.
+
+```php
+// UpdatePostRequest
+return [
+    'title' => ['required', 'string', 'max:255'],
+    'body' => ['required', 'string'],
+    'published_at' => ['present', 'nullable', 'date'],
+];
+```
+
+Add a feature test asserting `PATCH` returns `405` and that omitting a nullable field returns `422`.
 
 ## Form Request skeleton
 
@@ -265,6 +292,7 @@ class PostResource extends JsonResource
 - Returning a model or raw array from a controller action.
 - Putting `response()`, `abort()`, or Resource calls inside a Service.
 - Adding a repository layer that only forwards to Eloquent.
+- Registering `PATCH` or using `sometimes` rules to build a partial update endpoint.
 
 ## Checklist before finishing
 
@@ -272,5 +300,6 @@ class PostResource extends JsonResource
 2. The controller only orchestrates; behavior changes are implemented in a Service method.
 3. Responses go through a Resource, and no model escapes the controller unwrapped.
 4. `DB::transaction()` wraps multi-write Service methods.
-5. Failed validation returns `422`, unauthorized returns `403`, missing models return `404` without explicit handling.
-6. Feature tests cover the new behavior; `vendor/bin/pint --dirty --format agent` and the relevant tests pass.
+5. Update routes accept `PUT` only; `PATCH` returns `405`.
+6. Failed validation returns `422`, unauthorized returns `403`, missing models return `404` without explicit handling.
+7. Feature tests cover the new behavior; `vendor/bin/pint --dirty --format agent` and the relevant tests pass.

@@ -24,7 +24,7 @@ it('returns a bearer token for a valid mobile login', function () {
         ->assertJsonMissingPath('user.id')
         ->assertJsonPath('token_type', 'Bearer')
         ->assertJsonStructure([
-            'user' => ['uuid', 'name', 'email', 'username'],
+            'user' => ['uuid', 'email', 'username'],
             'token',
             'token_type',
         ]);

@@ -35,7 +35,7 @@ it('updates the audit columns when the model changes', function () {
     $this->actingAs($actor);
 
     $user = User::factory()->create();
-    $user->update(['name' => 'Updated Name']);
+    $user->update(['email' => 'updated@example.com']);
 
     expect($user->updated_by)->toBe($actor->id);
 });

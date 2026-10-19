@@ -101,6 +101,24 @@ class Post extends Model
 }
 ```
 
+## Profile tables (one-to-one with users)
+
+- Credentials stay in `users`; profile data lives in its own table, such as `pegawai`. `users` keeps no display name. User accounts are created, updated, and soft-deleted through the profile CRUD, so every user owns exactly one profile.
+- A profile table has a required `user_id` with `restrictOnDelete()` and a partial unique index on `user_id` where `deleted_at is null`, so a user has at most one active profile.
+- Derived login identifiers are synced by the Service whenever their source column changes; for example `users.username` always mirrors `pegawai.nip`.
+- Deleting the profile soft-deletes its user in the same transaction. The FK stays `restrict` so an accidental hard delete is rejected.
+- Case-insensitive unique checks are validated with an explicit `lower(column) = lower(?)` rule, because `Rule::unique()` compares the raw column first; the partial unique index is a backstop, not the user-facing message.
+
+## Search indexes
+
+- Case-insensitive prefix search uses a functional btree index with a pattern operator class:
+
+```sql
+create index pegawai_nama_lower_index on pegawai (lower(nama) text_pattern_ops) where deleted_at is null;
+```
+
+- A `lower(column)` btree index only serves prefix patterns (`like 'kata%'`). Substring searches (`like '%kata%'`) cannot use it; add a `pg_trgm` GIN index if those must stay fast.
+
 ## Tests
 
 - The suite runs against PostgreSQL, not SQLite, so hash indexes and `timestamptz` behavior are verified.

@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Models\Pegawai;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
@@ -12,12 +13,17 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::factory(10)->create();
+        Pegawai::factory(10)->create();
 
-        User::factory()->create([
-            'name' => 'Test User',
+        $user = User::factory()->create([
             'email' => 'test@example.com',
-            'username' => 'testuser',
+            'username' => '198001012005011001',
+        ]);
+
+        Pegawai::factory()->create([
+            'user_id' => $user->id,
+            'nip' => '198001012005011001',
+            'nama' => 'Test User',
         ]);
     }
 }

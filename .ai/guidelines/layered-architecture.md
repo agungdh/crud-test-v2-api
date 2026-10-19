@@ -30,4 +30,18 @@ Do not add repositories, action classes, or separate DTO folders unless the user
 - Validation failures return `422`, authorization returns `403` (Policy or Form Request `authorize()`), and missing route-bound models return `404`. Do not catch these in the controller.
 - Follow the existing `/api` prefix; the app does not version its routes.
 
+## Update endpoints (PUT only)
+
+- Updates use `PUT`, never `PATCH`. `Route::apiResource()` registers `PUT|PATCH` for `update`, so exclude it and register the PUT route explicitly:
+
+```php
+Route::apiResource('posts', PostController::class)->except('update');
+Route::put('posts/{post}', [PostController::class, 'update'])->name('posts.update');
+```
+
+- `PUT` is a full replacement. Every mutable field must be present in the payload: `required` for mandatory fields and `present|nullable` for nullable fields. An omitted field must fail validation with `422`, never silently keep its previous value.
+- Password is the exception: `sometimes|nullable`; when omitted or `null` the existing password stays unchanged.
+- The Service writes every validated key, including explicit `null` values, inside one `DB::transaction()`.
+- Feature tests assert that `PATCH` returns `405` and that a payload missing a nullable field returns `422`.
+
 The `layered-architecture` skill holds the full skeletons to copy and the review checklist.
