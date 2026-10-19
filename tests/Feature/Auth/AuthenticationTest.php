@@ -13,17 +13,18 @@ it('returns a bearer token for a valid mobile login', function () {
     $user = User::factory()->create(['email' => 'mobile@example.com']);
 
     $response = $this->postJson('/api/login', [
-        'email' => 'mobile@example.com',
+        'login' => 'mobile@example.com',
         'password' => 'password',
         'device_name' => 'android',
     ]);
 
     $response->assertOk()
         ->assertJsonPath('user.uuid', $user->uuid)
+        ->assertJsonPath('user.username', $user->username)
         ->assertJsonMissingPath('user.id')
         ->assertJsonPath('token_type', 'Bearer')
         ->assertJsonStructure([
-            'user' => ['uuid', 'name', 'email'],
+            'user' => ['uuid', 'name', 'email', 'username'],
             'token',
             'token_type',
         ]);
@@ -32,11 +33,57 @@ it('returns a bearer token for a valid mobile login', function () {
         ->and($user->tokens()->where('name', 'android')->exists())->toBeTrue();
 });
 
+it('logs in with a username', function () {
+    $user = User::factory()->create(['username' => 'mobileuser']);
+
+    $this->postJson('/api/login', [
+        'login' => 'mobileuser',
+        'password' => 'password',
+    ])->assertOk()
+        ->assertJsonPath('user.uuid', $user->uuid);
+});
+
+it('matches the login identifier case-insensitively', function (string $identifier) {
+    $user = User::factory()->create([
+        'email' => 'mobile@example.com',
+        'username' => 'mobileuser',
+    ]);
+
+    $this->postJson('/api/login', [
+        'login' => $identifier,
+        'password' => 'password',
+    ])->assertOk()
+        ->assertJsonPath('user.uuid', $user->uuid);
+})->with([
+    'email' => ['MOBILE@EXAMPLE.COM'],
+    'username' => ['MOBILEUSER'],
+]);
+
+it('logs in with an email when the username is missing', function () {
+    $user = User::factory()->withoutUsername()->create(['email' => 'mobile@example.com']);
+
+    $this->postJson('/api/login', [
+        'login' => 'mobile@example.com',
+        'password' => 'password',
+    ])->assertOk()
+        ->assertJsonPath('user.uuid', $user->uuid);
+});
+
+it('logs in with a username when the email is missing', function () {
+    $user = User::factory()->withoutEmail()->create(['username' => 'mobileuser']);
+
+    $this->postJson('/api/login', [
+        'login' => 'mobileuser',
+        'password' => 'password',
+    ])->assertOk()
+        ->assertJsonPath('user.uuid', $user->uuid);
+});
+
 it('does not expose the password in the login response', function () {
     User::factory()->create(['email' => 'mobile@example.com']);
 
     $this->postJson('/api/login', [
-        'email' => 'mobile@example.com',
+        'login' => 'mobile@example.com',
         'password' => 'password',
     ])->assertOk()
         ->assertJsonMissingPath('user.password')
@@ -47,16 +94,16 @@ it('returns 422 when the credentials are invalid', function () {
     User::factory()->create(['email' => 'user@example.com']);
 
     $this->postJson('/api/login', [
-        'email' => 'user@example.com',
+        'login' => 'user@example.com',
         'password' => 'wrong-password',
     ])->assertUnprocessable()
-        ->assertJsonValidationErrors('email');
+        ->assertJsonValidationErrors('login');
 });
 
 it('returns 422 when the required credentials are missing', function () {
     $this->postJson('/api/login', [])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors(['email', 'password']);
+        ->assertJsonValidationErrors(['login', 'password']);
 });
 
 it('authenticates a stateful login and exposes the user via the session', function () {
@@ -64,7 +111,7 @@ it('authenticates a stateful login and exposes the user via the session', functi
 
     $this->withHeader('Origin', 'http://localhost:5173')
         ->postJson('/api/login', [
-            'email' => $user->email,
+            'login' => $user->email,
             'password' => 'password',
         ])->assertOk()
         ->assertJsonPath('user.uuid', $user->uuid)
@@ -77,6 +124,7 @@ it('authenticates a stateful login and exposes the user via the session', functi
         ->getJson('/api/me')
         ->assertOk()
         ->assertJsonPath('data.uuid', $user->uuid)
+        ->assertJsonPath('data.username', $user->username)
         ->assertJsonMissingPath('data.id');
 });
 
@@ -92,6 +140,7 @@ it('returns the authenticated user for a bearer token', function () {
         ->getJson('/api/me')
         ->assertOk()
         ->assertJsonPath('data.uuid', $user->uuid)
+        ->assertJsonPath('data.username', $user->username)
         ->assertJsonMissingPath('data.password')
         ->assertJsonMissingPath('data.id');
 });
@@ -120,7 +169,7 @@ it('ends the session on a stateful logout', function () {
 
     $this->withHeader('Origin', 'http://localhost:5173')
         ->postJson('/api/login', [
-            'email' => $user->email,
+            'login' => $user->email,
             'password' => 'password',
         ])->assertOk();
 
@@ -138,13 +187,13 @@ it('rate limits repeated login attempts', function () {
 
     foreach (range(1, 5) as $attempt) {
         $this->postJson('/api/login', [
-            'email' => 'user@example.com',
+            'login' => 'user@example.com',
             'password' => 'wrong-password',
         ])->assertUnprocessable();
     }
 
     $this->postJson('/api/login', [
-        'email' => 'user@example.com',
+        'login' => 'user@example.com',
         'password' => 'wrong-password',
     ])->assertTooManyRequests();
 });

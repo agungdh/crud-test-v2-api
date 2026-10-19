@@ -12,17 +12,20 @@ class AuthService
     /**
      * Verify the given credentials and return the matching user.
      *
-     * @param  array{email: string, password: string}  $credentials
+     * @param  array{login: string, password: string}  $credentials
      *
      * @throws ValidationException
      */
     public function attemptLogin(array $credentials): User
     {
-        $user = User::where('email', $credentials['email'])->first();
+        $identifier = trim($credentials['login']);
+
+        $user = User::query()->where('email', $identifier)->first()
+            ?? User::query()->where('username', $identifier)->first();
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             throw ValidationException::withMessages([
-                'email' => [__('auth.failed')],
+                'login' => [__('auth.failed')],
             ]);
         }
 

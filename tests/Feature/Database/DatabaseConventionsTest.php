@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -88,5 +90,56 @@ it('keeps the unique email constraint partial to active users', function () {
         ->first();
 
     expect($index)->not->toBeNull()
-        ->and($index->indexdef)->toContain('WHERE (deleted_at IS NULL)');
+        ->and($index->indexdef)->toContain('WHERE (deleted_at IS NULL)')
+        ->and($index->indexdef)->not->toContain('lower(');
 });
+
+it('keeps the unique username constraint partial to active users', function () {
+    $index = DB::table('pg_indexes')
+        ->where('schemaname', 'public')
+        ->where('tablename', 'users')
+        ->where('indexname', 'users_username_unique')
+        ->first();
+
+    expect($index)->not->toBeNull()
+        ->and($index->indexdef)->toContain('WHERE (deleted_at IS NULL)')
+        ->and($index->indexdef)->not->toContain('lower(');
+});
+
+it('stores email and username as case-insensitive text', function () {
+    $columns = DB::table('information_schema.columns')
+        ->where('table_schema', 'public')
+        ->where('table_name', 'users')
+        ->whereIn('column_name', ['email', 'username'])
+        ->pluck('udt_name', 'column_name')
+        ->all();
+
+    expect($columns)->toMatchArray([
+        'email' => 'citext',
+        'username' => 'citext',
+    ]);
+});
+
+it('allows users without an email or username', function () {
+    $columns = DB::table('information_schema.columns')
+        ->where('table_schema', 'public')
+        ->where('table_name', 'users')
+        ->whereIn('column_name', ['email', 'username'])
+        ->pluck('is_nullable', 'column_name')
+        ->all();
+
+    expect($columns)->toMatchArray([
+        'email' => 'YES',
+        'username' => 'YES',
+    ]);
+});
+
+it('enforces case-insensitive uniqueness', function (string $column, string $first, string $second) {
+    User::factory()->create([$column => $first]);
+
+    expect(fn () => User::factory()->create([$column => $second]))
+        ->toThrow(QueryException::class);
+})->with([
+    'email' => ['email', 'User@Example.com', 'user@example.com'],
+    'username' => ['username', 'Budi', 'budi'],
+]);

@@ -21,7 +21,7 @@ class AuthController extends Controller
      */
     public function login(LoginRequest $request): JsonResponse
     {
-        $user = $this->authService->attemptLogin($request->safe()->only(['email', 'password']));
+        $user = $this->authService->attemptLogin($request->safe()->only(['login', 'password']));
 
         if ($request->hasSession()) {
             Auth::guard('web')->login($user);
