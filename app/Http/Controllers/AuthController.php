@@ -2,52 +2,39 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\LoginRequest;
 use App\Http\Resources\UserResource;
-use App\Models\User;
+use App\Services\AuthService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
-use Laravel\Sanctum\PersonalAccessToken;
 
 class AuthController extends Controller
 {
+    public function __construct(private AuthService $authService)
+    {
+        //
+    }
+
     /**
      * Authenticate the user via a stateful session or issue a bearer token.
      */
     public function login(LoginRequest $request): JsonResponse
     {
-        $credentials = $request->safe()->only(['email', 'password']);
+        $user = $this->authService->attemptLogin($request->safe()->only(['email', 'password']));
 
         if ($request->hasSession()) {
-            if (! Auth::guard('web')->attempt($credentials)) {
-                throw ValidationException::withMessages([
-                    'email' => [__('auth.failed')],
-                ]);
-            }
-
+            Auth::guard('web')->login($user);
             $request->session()->regenerate();
 
             return response()->json([
-                'user' => UserResource::make($request->user()),
+                'user' => UserResource::make($user),
             ]);
         }
-
-        $user = User::where('email', $credentials['email'])->first();
-
-        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => [__('auth.failed')],
-            ]);
-        }
-
-        $token = $user->createToken($request->validated('device_name') ?? 'mobile');
 
         return response()->json([
             'user' => UserResource::make($user),
-            'token' => $token->plainTextToken,
+            'token' => $this->authService->createToken($user, $request->validated('device_name')),
             'token_type' => 'Bearer',
         ]);
     }
@@ -57,11 +44,7 @@ class AuthController extends Controller
      */
     public function logout(Request $request): JsonResponse
     {
-        $accessToken = $request->user()->currentAccessToken();
-
-        if ($accessToken instanceof PersonalAccessToken) {
-            $accessToken->delete();
-        }
+        $this->authService->revokeCurrentToken($request->user());
 
         if ($request->hasSession()) {
             Auth::guard('web')->logout();
