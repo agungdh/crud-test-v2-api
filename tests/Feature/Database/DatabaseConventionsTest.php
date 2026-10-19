@@ -90,8 +90,8 @@ it('keeps the unique email constraint partial to active users', function () {
         ->first();
 
     expect($index)->not->toBeNull()
-        ->and($index->indexdef)->toContain('WHERE (deleted_at IS NULL)')
-        ->and($index->indexdef)->not->toContain('lower(');
+        ->and($index->indexdef)->toContain('lower(')
+        ->and($index->indexdef)->toContain('WHERE (deleted_at IS NULL)');
 });
 
 it('keeps the unique username constraint partial to active users', function () {
@@ -102,11 +102,11 @@ it('keeps the unique username constraint partial to active users', function () {
         ->first();
 
     expect($index)->not->toBeNull()
-        ->and($index->indexdef)->toContain('WHERE (deleted_at IS NULL)')
-        ->and($index->indexdef)->not->toContain('lower(');
+        ->and($index->indexdef)->toContain('lower(')
+        ->and($index->indexdef)->toContain('WHERE (deleted_at IS NULL)');
 });
 
-it('stores email and username as case-insensitive text', function () {
+it('stores email and username as varchar', function () {
     $columns = DB::table('information_schema.columns')
         ->where('table_schema', 'public')
         ->where('table_name', 'users')
@@ -115,8 +115,8 @@ it('stores email and username as case-insensitive text', function () {
         ->all();
 
     expect($columns)->toMatchArray([
-        'email' => 'citext',
-        'username' => 'citext',
+        'email' => 'varchar',
+        'username' => 'varchar',
     ]);
 });
 

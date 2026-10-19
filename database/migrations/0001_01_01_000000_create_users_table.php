@@ -16,8 +16,8 @@ return new class extends Migration
             $table->id();
             $table->uuid('uuid');
             $table->string('name');
-            $table->rawColumn('email', 'citext')->nullable();
-            $table->rawColumn('username', 'citext')->nullable();
+            $table->string('email')->nullable();
+            $table->string('username')->nullable();
             $table->timestampTz('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
@@ -26,8 +26,8 @@ return new class extends Migration
             $table->index('uuid', 'users_uuid_hash_index', 'hash');
         });
 
-        DB::statement('create unique index users_email_unique on users (email) where deleted_at is null');
-        DB::statement('create unique index users_username_unique on users (username) where deleted_at is null');
+        DB::statement('create unique index users_email_unique on users (lower(email)) where deleted_at is null');
+        DB::statement('create unique index users_username_unique on users (lower(username)) where deleted_at is null');
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
             $table->string('email')->primary();

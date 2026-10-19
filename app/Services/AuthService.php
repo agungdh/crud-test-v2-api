@@ -20,8 +20,8 @@ class AuthService
     {
         $identifier = trim($credentials['login']);
 
-        $user = User::query()->where('email', $identifier)->first()
-            ?? User::query()->where('username', $identifier)->first();
+        $user = User::query()->whereRaw('lower(email) = lower(?)', [$identifier])->first()
+            ?? User::query()->whereRaw('lower(username) = lower(?)', [$identifier])->first();
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
             throw ValidationException::withMessages([
