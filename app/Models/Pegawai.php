@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable(['user_id', 'nip', 'nama', 'tanggal_lahir', 'jabatan', 'bidang', 'is_male', 'tmt'])]
@@ -41,5 +42,15 @@ class Pegawai extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the diklat records owned by the pegawai.
+     *
+     * @return HasMany<Diklat, $this>
+     */
+    public function diklat(): HasMany
+    {
+        return $this->hasMany(Diklat::class);
     }
 }

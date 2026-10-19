@@ -68,8 +68,11 @@ Every endpoint that accepts input gets its own Form Request, including list endp
 
 - Mandatory fields use `required`.
 - Nullable fields use `present|nullable`, so the key must exist but the value may be `null`. A missing key fails with `422` instead of silently keeping the old value.
-- Password is the exception: `sometimes|nullable`; omitted or `null` leaves the stored password unchanged.
-- The Service writes every validated key, including explicit `null` values, inside one `DB::transaction()`.
+- Opaque fields that cannot be replaced blindly use `sometimes|nullable` instead: password and file uploads.
+  - Password: omitted or `null` leaves the stored password unchanged.
+  - File upload: omitted keeps the stored file, a new file replaces it, and `null` removes it. Multipart clients cannot reliably send an empty file part, so `present` would reject a normal "attachment untouched" submission. Multipart uploads arrive as `POST` with `_method=PUT`, because PHP does not populate files for a real `PUT`.
+- Only these keep-or-replace fields skip the full-replacement rule. Everything else stays `required` or `present|nullable`, so the endpoint still replaces the record.
+- The Service writes every validated key, including explicit `null` values, inside one `DB::transaction()`, and for files deletes the replaced or removed object after the database write commits.
 
 ```php
 // UpdatePostRequest
@@ -77,10 +80,12 @@ return [
     'title' => ['required', 'string', 'max:255'],
     'body' => ['required', 'string'],
     'published_at' => ['present', 'nullable', 'date'],
+    // keep-or-replace: omitted keeps the current file, a value replaces it, null removes it
+    'attachment' => ['sometimes', 'nullable', 'file', 'max:10240'],
 ];
 ```
 
-Add a feature test asserting `PATCH` returns `405` and that omitting a nullable field returns `422`.
+Add a feature test asserting `PATCH` returns `405`, that omitting a nullable field returns `422`, and that a `sometimes` field keeps its value when omitted, replaces it when sent, and clears it when `null`.
 
 ## Form Request skeleton
 
@@ -292,7 +297,7 @@ class PostResource extends JsonResource
 - Returning a model or raw array from a controller action.
 - Putting `response()`, `abort()`, or Resource calls inside a Service.
 - Adding a repository layer that only forwards to Eloquent.
-- Registering `PATCH` or using `sometimes` rules to build a partial update endpoint.
+- Registering `PATCH`, or using `sometimes` rules for anything other than the password and file upload fields.
 
 ## Checklist before finishing
 
@@ -300,6 +305,6 @@ class PostResource extends JsonResource
 2. The controller only orchestrates; behavior changes are implemented in a Service method.
 3. Responses go through a Resource, and no model escapes the controller unwrapped.
 4. `DB::transaction()` wraps multi-write Service methods.
-5. Update routes accept `PUT` only; `PATCH` returns `405`.
+5. Update routes accept `PUT` only; `PATCH` returns `405`, and `sometimes|nullable` appears only on password and file upload fields.
 6. Failed validation returns `422`, unauthorized returns `403`, missing models return `404` without explicit handling.
 7. Feature tests cover the new behavior; `vendor/bin/pint --dirty --format agent` and the relevant tests pass.

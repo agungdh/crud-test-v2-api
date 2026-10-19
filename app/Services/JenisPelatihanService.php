@@ -1,0 +1,60 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\JenisPelatihan;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
+
+class JenisPelatihanService
+{
+    /**
+     * @param  array{search?: string|null, per_page?: int|null}  $filters
+     */
+    public function paginate(array $filters): LengthAwarePaginator
+    {
+        $search = $filters['search'] ?? null;
+
+        return JenisPelatihan::query()
+            ->when($search, function (Builder $query, string $search): void {
+                $query->whereRaw('lower(jenis_pelatihan) like ?', [mb_strtolower($search).'%']);
+            })
+            ->orderBy('jenis_pelatihan')
+            ->paginate($filters['per_page'] ?? 15);
+    }
+
+    /**
+     * @param  array{jenis_pelatihan: string}  $data
+     */
+    public function create(array $data): JenisPelatihan
+    {
+        return JenisPelatihan::create($data);
+    }
+
+    /**
+     * @param  array{jenis_pelatihan: string}  $data
+     */
+    public function update(JenisPelatihan $jenisPelatihan, array $data): JenisPelatihan
+    {
+        $jenisPelatihan->update($data);
+
+        return $jenisPelatihan->refresh();
+    }
+
+    /**
+     * Soft delete the training type, unless it is still referenced by a diklat.
+     *
+     * @throws ValidationException
+     */
+    public function delete(JenisPelatihan $jenisPelatihan): void
+    {
+        if ($jenisPelatihan->diklat()->exists()) {
+            throw ValidationException::withMessages([
+                'jenis_pelatihan' => ['Jenis pelatihan masih dipakai oleh data diklat.'],
+            ]);
+        }
+
+        $jenisPelatihan->delete();
+    }
+}

@@ -40,8 +40,11 @@ Route::put('posts/{post}', [PostController::class, 'update'])->name('posts.updat
 ```
 
 - `PUT` is a full replacement. Every mutable field must be present in the payload: `required` for mandatory fields and `present|nullable` for nullable fields. An omitted field must fail validation with `422`, never silently keep its previous value.
-- Password is the exception: `sometimes|nullable`; when omitted or `null` the existing password stays unchanged.
-- The Service writes every validated key, including explicit `null` values, inside one `DB::transaction()`.
-- Feature tests assert that `PATCH` returns `405` and that a payload missing a nullable field returns `422`.
+- Opaque fields that cannot be replaced blindly use `sometimes|nullable` instead, and the Form Request says why. Two cases qualify today:
+  - Password: omitted or `null` leaves the stored password unchanged.
+  - File uploads: omitted keeps the stored file, a new file replaces it, and an explicit `null` removes it. Multipart clients cannot reliably send an empty file part, so `present` would reject a normal "attachment untouched" submission. Multipart uploads arrive as `POST` with `_method=PUT`, because PHP does not populate files for a real `PUT`.
+- Do not stretch `sometimes|nullable` into a partial-update endpoint. Every other field stays `required` or `present|nullable`; the endpoint still replaces the record and only treats those opaque fields as keep-or-replace.
+- The Service writes every validated key, including explicit `null` values, inside one `DB::transaction()`, and handles the file follow-up: delete the replaced or removed object after the database write commits.
+- Feature tests assert that `PATCH` returns `405` and that a payload missing a nullable field returns `422`. For `sometimes` fields, cover all three states: omitted keeps the stored value, a value replaces it, `null` clears it.
 
 The `layered-architecture` skill holds the full skeletons to copy and the review checklist.

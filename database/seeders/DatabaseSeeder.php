@@ -25,5 +25,7 @@ class DatabaseSeeder extends Seeder
             'nip' => '198001012005011001',
             'nama' => 'Test User',
         ]);
+
+        $this->call(JenisPelatihanSeeder::class);
     }
 }
