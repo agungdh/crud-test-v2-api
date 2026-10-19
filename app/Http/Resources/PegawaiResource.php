@@ -29,8 +29,6 @@ class PegawaiResource extends JsonResource
             'tmt' => $this->tmt?->toDateString(),
             'user_uuid' => $this->whenLoaded('user', fn (): string => $this->user->uuid),
             'user' => UserResource::make($this->whenLoaded('user')),
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
         ];
     }
 }

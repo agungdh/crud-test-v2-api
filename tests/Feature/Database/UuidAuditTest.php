@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Pegawai;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -54,4 +55,22 @@ it('records who soft deleted and restored the model', function () {
 
     expect($user->deleted_at)->toBeNull()
         ->and($user->deleted_by)->toBeNull();
+});
+
+it('hides the audit columns from model serialization', function () {
+    $user = User::factory()->create();
+    $pegawai = Pegawai::factory()->create(['user_id' => $user->id]);
+
+    $auditColumns = [
+        'created_by',
+        'updated_by',
+        'deleted_by',
+        'created_at',
+        'updated_at',
+        'deleted_at',
+    ];
+
+    expect($user->toArray())->not->toHaveKeys($auditColumns)
+        ->and($pegawai->toArray())->not->toHaveKeys($auditColumns)
+        ->and($user->toArray())->not->toHaveKey('password');
 });

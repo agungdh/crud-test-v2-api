@@ -7,6 +7,23 @@ use Illuminate\Support\Facades\Auth;
 trait HasAuditColumns
 {
     /**
+     * Hide the audit columns from array and JSON serialization.
+     *
+     * Audit columns belong to the database only and must never reach the API.
+     */
+    public function initializeHasAuditColumns(): void
+    {
+        $this->mergeHidden([
+            'created_by',
+            'updated_by',
+            'deleted_by',
+            'created_at',
+            'updated_at',
+            'deleted_at',
+        ]);
+    }
+
+    /**
      * Keep the audit columns in sync with the authenticated actor.
      */
     protected static function bootHasAuditColumns(): void

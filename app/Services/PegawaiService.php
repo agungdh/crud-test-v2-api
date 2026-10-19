@@ -31,7 +31,7 @@ class PegawaiService
                         });
                 });
             })
-            ->latest()
+            ->latest('id')
             ->paginate($filters['per_page'] ?? 15);
     }
 

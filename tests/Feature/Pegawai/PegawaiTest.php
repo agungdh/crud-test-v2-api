@@ -34,6 +34,42 @@ function authenticatePegawaiActor(): User
     return $user;
 }
 
+/**
+ * @return array<int, string>
+ */
+function pegawaiAuditColumns(): array
+{
+    return [
+        'created_by',
+        'updated_by',
+        'deleted_by',
+        'created_at',
+        'updated_at',
+        'deleted_at',
+    ];
+}
+
+/**
+ * Collect every key in a decoded JSON payload, including nested ones.
+ *
+ * @param  array<array-key, mixed>  $payload
+ * @return array<int, string>
+ */
+function payloadKeys(array $payload): array
+{
+    $keys = [];
+
+    foreach ($payload as $key => $value) {
+        $keys[] = (string) $key;
+
+        if (is_array($value)) {
+            $keys = [...$keys, ...payloadKeys($value)];
+        }
+    }
+
+    return $keys;
+}
+
 it('requires authentication', function () {
     $this->getJson('/api/pegawai')->assertUnauthorized();
     $this->postJson('/api/pegawai', pegawaiPayload())->assertUnauthorized();
@@ -61,7 +97,6 @@ it('creates a user and a pegawai in one request', function () {
                 'uuid', 'nip', 'nama', 'tanggal_lahir', 'jabatan', 'bidang',
                 'gender', 'tmt', 'user_uuid',
                 'user' => ['uuid', 'email', 'username'],
-                'created_at', 'updated_at',
             ],
         ]);
 
@@ -205,6 +240,35 @@ it('returns 404 for an unknown uuid', function () {
     authenticatePegawaiActor();
 
     $this->getJson('/api/pegawai/'.Str::uuid())->assertNotFound();
+});
+
+it('never exposes the audit columns', function () {
+    authenticatePegawaiActor();
+
+    $pegawai = Pegawai::factory()->create();
+
+    $responses = [
+        $this->getJson('/api/pegawai')->assertOk(),
+        $this->getJson("/api/pegawai/{$pegawai->uuid}")->assertOk(),
+        $this->postJson('/api/pegawai', pegawaiPayload([
+            'nip' => '333333333333333333',
+            'email' => 'audit-check@example.com',
+        ]))->assertCreated(),
+        $this->putJson("/api/pegawai/{$pegawai->uuid}", [
+            'email' => $pegawai->user->email,
+            'nip' => $pegawai->nip,
+            'nama' => $pegawai->nama,
+            'tanggal_lahir' => null,
+            'jabatan' => null,
+            'bidang' => null,
+            'gender' => null,
+            'tmt' => null,
+        ])->assertOk(),
+    ];
+
+    foreach ($responses as $response) {
+        expect(array_intersect(payloadKeys($response->json()), pegawaiAuditColumns()))->toBeEmpty();
+    }
 });
 
 it('replaces every field on update', function () {

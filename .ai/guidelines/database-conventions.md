@@ -74,6 +74,9 @@ $table->index('deleted_at');
 - The `HasAuditColumns` concern fills them from `Auth::id()`: `created_by` and `updated_by` on create, `updated_by` on update, `deleted_by` on soft delete, and clears `deleted_by` on restore.
 - They stay null for console and queue work because no actor is authenticated.
 - Mass deletes through the query builder (`Model::where(...)->delete()`) skip model events and leave `deleted_by` null. Use `Model::delete()` on an instance for audited models.
+- Audit columns are database-only. Never expose `created_by`, `updated_by`, `deleted_by`, `created_at`, `updated_at`, or `deleted_at` in API Resources or any response.
+- Do not use audit columns as application data either: no ordering, filtering, or decisions on `created_at`; order by the primary key for insertion order. When the app needs a meaningful timestamp, add its own column, such as `submission_time`.
+- `HasAuditColumns` hides all six columns from model array and JSON serialization. A Resource that lists them explicitly still leaks them, so keep them out of `toArray()`.
 
 ## Soft deletes
 
@@ -123,4 +126,4 @@ create index pegawai_nama_lower_index on pegawai (lower(nama) text_pattern_ops) 
 
 - The suite runs against PostgreSQL, not SQLite, so hash indexes and `timestamptz` behavior are verified.
 - Schema coverage asserts every timestamp column uses a time zone, the UUID hash index exists without a unique constraint, `deleted_at` is indexed, and the audit columns match the primary key type.
-- Feature coverage asserts UUID v4 generation, audit values on create, update, delete, and restore, and that the numeric `id` is absent from API responses.
+- Feature coverage asserts UUID v4 generation, audit values on create, update, delete, and restore, and that the numeric `id` and audit columns are absent from API responses.
