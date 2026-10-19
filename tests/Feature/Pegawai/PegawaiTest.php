@@ -20,7 +20,7 @@ function pegawaiPayload(array $overrides = []): array
         'tanggal_lahir' => '1980-01-01',
         'jabatan' => 'Staf',
         'bidang' => 'Keuangan',
-        'is_male' => true,
+        'gender' => 'male',
         'tmt' => '2005-01-01',
     ], $overrides);
 }
@@ -50,7 +50,7 @@ it('creates a user and a pegawai in one request', function () {
         ->assertJsonPath('data.nip', '198001012005011001')
         ->assertJsonPath('data.nama', 'Budi')
         ->assertJsonPath('data.tanggal_lahir', '1980-01-01')
-        ->assertJsonPath('data.is_male', true)
+        ->assertJsonPath('data.gender', 'male')
         ->assertJsonPath('data.tmt', '2005-01-01')
         ->assertJsonPath('data.user.email', 'budi@example.com')
         ->assertJsonPath('data.user.username', '198001012005011001')
@@ -59,7 +59,7 @@ it('creates a user and a pegawai in one request', function () {
         ->assertJsonStructure([
             'data' => [
                 'uuid', 'nip', 'nama', 'tanggal_lahir', 'jabatan', 'bidang',
-                'is_male', 'tmt', 'user_uuid',
+                'gender', 'tmt', 'user_uuid',
                 'user' => ['uuid', 'email', 'username'],
                 'created_at', 'updated_at',
             ],
@@ -71,6 +71,7 @@ it('creates a user and a pegawai in one request', function () {
         ->and($response->json('data.user_uuid'))->toBe($pegawai->user->uuid)
         ->and($pegawai->user->username)->toBe($pegawai->nip)
         ->and($pegawai->user->email)->toBe('budi@example.com')
+        ->and($pegawai->is_male)->toBeTrue()
         ->and(Hash::check('password123', $pegawai->user->password))->toBeTrue()
         ->and($pegawai->created_by)->toBe($actor->id);
 });
@@ -121,10 +122,10 @@ it('validates the field formats on create', function () {
         'email' => 'not-an-email',
         'tanggal_lahir' => 'not-a-date',
         'tmt' => 'not-a-date',
-        'is_male' => 'not-a-boolean',
+        'gender' => 'not-a-gender',
     ]))
         ->assertUnprocessable()
-        ->assertJsonValidationErrors(['email', 'tanggal_lahir', 'tmt', 'is_male']);
+        ->assertJsonValidationErrors(['email', 'tanggal_lahir', 'tmt', 'gender']);
 });
 
 it('lists pegawai with pagination and search', function () {
@@ -219,7 +220,7 @@ it('replaces every field on update', function () {
         'tanggal_lahir' => null,
         'jabatan' => null,
         'bidang' => 'Bidang Baru',
-        'is_male' => false,
+        'gender' => 'female',
         'tmt' => null,
     ])
         ->assertOk()
@@ -228,7 +229,7 @@ it('replaces every field on update', function () {
         ->assertJsonPath('data.tanggal_lahir', null)
         ->assertJsonPath('data.jabatan', null)
         ->assertJsonPath('data.bidang', 'Bidang Baru')
-        ->assertJsonPath('data.is_male', false)
+        ->assertJsonPath('data.gender', 'female')
         ->assertJsonPath('data.tmt', null)
         ->assertJsonPath('data.user.username', '222')
         ->assertJsonPath('data.user.email', 'new@example.com');
@@ -237,6 +238,7 @@ it('replaces every field on update', function () {
 
     expect($fresh->tanggal_lahir)->toBeNull()
         ->and($fresh->jabatan)->toBeNull()
+        ->and($fresh->is_male)->toBeFalse()
         ->and($fresh->user->username)->toBe('222')
         ->and(Hash::check('newpassword', $fresh->user->password))->toBeTrue()
         ->and($fresh->updated_by)->toBe($actor->id);
@@ -252,7 +254,7 @@ it('requires every nullable field to be present on update', function () {
         'nama' => $pegawai->nama,
         'jabatan' => null,
         'bidang' => null,
-        'is_male' => null,
+        'gender' => null,
         'tmt' => null,
     ])
         ->assertUnprocessable()
@@ -272,7 +274,7 @@ it('keeps the password when it is not sent', function () {
         'tanggal_lahir' => null,
         'jabatan' => null,
         'bidang' => null,
-        'is_male' => null,
+        'gender' => null,
         'tmt' => null,
     ])->assertOk();
 
@@ -296,7 +298,7 @@ it('rejects a nip or email owned by another pegawai', function () {
         'tanggal_lahir' => null,
         'jabatan' => null,
         'bidang' => null,
-        'is_male' => null,
+        'gender' => null,
         'tmt' => null,
     ])
         ->assertUnprocessable()

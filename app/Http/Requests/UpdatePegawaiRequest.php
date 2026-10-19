@@ -62,7 +62,7 @@ class UpdatePegawaiRequest extends FormRequest
             'tanggal_lahir' => ['present', 'nullable', 'date'],
             'jabatan' => ['present', 'nullable', 'string', 'max:255'],
             'bidang' => ['present', 'nullable', 'string', 'max:255'],
-            'is_male' => ['present', 'nullable', 'boolean'],
+            'gender' => ['present', 'nullable', Rule::in(['male', 'female'])],
             'tmt' => ['present', 'nullable', 'date'],
         ];
     }

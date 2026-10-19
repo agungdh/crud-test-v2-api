@@ -36,7 +36,7 @@ class PegawaiService
     }
 
     /**
-     * @param  array{email?: string|null, password: string, nip: string, nama: string, tanggal_lahir?: string|null, jabatan?: string|null, bidang?: string|null, is_male?: bool|null, tmt?: string|null}  $data
+     * @param  array{email?: string|null, password: string, nip: string, nama: string, tanggal_lahir?: string|null, jabatan?: string|null, bidang?: string|null, gender?: string|null, tmt?: string|null}  $data
      */
     public function create(array $data): Pegawai
     {
@@ -47,7 +47,7 @@ class PegawaiService
                 'password' => $data['password'],
             ]);
 
-            $pegawai = $user->pegawai()->create(Arr::except($data, ['email', 'password']));
+            $pegawai = $user->pegawai()->create($this->pegawaiAttributes($data));
 
             return $pegawai->load('user');
         });
@@ -59,7 +59,7 @@ class PegawaiService
     }
 
     /**
-     * @param  array{email: string|null, password?: string|null, nip: string, nama: string, tanggal_lahir: string|null, jabatan: string|null, bidang: string|null, is_male: bool|null, tmt: string|null}  $data
+     * @param  array{email: string|null, password?: string|null, nip: string, nama: string, tanggal_lahir: string|null, jabatan: string|null, bidang: string|null, gender: string|null, tmt: string|null}  $data
      */
     public function update(Pegawai $pegawai, array $data): Pegawai
     {
@@ -74,10 +74,28 @@ class PegawaiService
             }
 
             $pegawai->user->update($userData);
-            $pegawai->update(Arr::except($data, ['email', 'password']));
+            $pegawai->update($this->pegawaiAttributes($data));
 
             return $pegawai->refresh()->load('user');
         });
+    }
+
+    /**
+     * Map the request payload to pegawai columns, storing gender as the is_male flag.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function pegawaiAttributes(array $data): array
+    {
+        return [
+            ...Arr::except($data, ['email', 'password', 'gender']),
+            'is_male' => match ($data['gender'] ?? null) {
+                'male' => true,
+                'female' => false,
+                default => null,
+            },
+        ];
     }
 
     public function delete(Pegawai $pegawai): void

@@ -21,7 +21,11 @@ class PegawaiResource extends JsonResource
             'tanggal_lahir' => $this->tanggal_lahir?->toDateString(),
             'jabatan' => $this->jabatan,
             'bidang' => $this->bidang,
-            'is_male' => $this->is_male,
+            'gender' => match ($this->is_male) {
+                true => 'male',
+                false => 'female',
+                null => null,
+            },
             'tmt' => $this->tmt?->toDateString(),
             'user_uuid' => $this->whenLoaded('user', fn (): string => $this->user->uuid),
             'user' => UserResource::make($this->whenLoaded('user')),

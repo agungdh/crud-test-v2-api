@@ -56,7 +56,7 @@ class StorePegawaiRequest extends FormRequest
             'tanggal_lahir' => ['nullable', 'date'],
             'jabatan' => ['nullable', 'string', 'max:255'],
             'bidang' => ['nullable', 'string', 'max:255'],
-            'is_male' => ['nullable', 'boolean'],
+            'gender' => ['nullable', Rule::in(['male', 'female'])],
             'tmt' => ['nullable', 'date'],
         ];
     }
