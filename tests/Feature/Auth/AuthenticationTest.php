@@ -19,10 +19,11 @@ it('returns a bearer token for a valid mobile login', function () {
     ]);
 
     $response->assertOk()
-        ->assertJsonPath('user.id', $user->id)
+        ->assertJsonPath('user.uuid', $user->uuid)
+        ->assertJsonMissingPath('user.id')
         ->assertJsonPath('token_type', 'Bearer')
         ->assertJsonStructure([
-            'user' => ['id', 'name', 'email'],
+            'user' => ['uuid', 'name', 'email'],
             'token',
             'token_type',
         ]);
@@ -38,7 +39,8 @@ it('does not expose the password in the login response', function () {
         'email' => 'mobile@example.com',
         'password' => 'password',
     ])->assertOk()
-        ->assertJsonMissingPath('user.password');
+        ->assertJsonMissingPath('user.password')
+        ->assertJsonMissingPath('user.id');
 });
 
 it('returns 422 when the credentials are invalid', function () {
@@ -65,7 +67,7 @@ it('authenticates a stateful login and exposes the user via the session', functi
             'email' => $user->email,
             'password' => 'password',
         ])->assertOk()
-        ->assertJsonPath('user.id', $user->id)
+        ->assertJsonPath('user.uuid', $user->uuid)
         ->assertJsonMissingPath('token');
 
     $this->assertAuthenticatedAs($user);
@@ -74,7 +76,8 @@ it('authenticates a stateful login and exposes the user via the session', functi
     $this->withHeader('Origin', 'http://localhost:5173')
         ->getJson('/api/me')
         ->assertOk()
-        ->assertJsonPath('data.id', $user->id);
+        ->assertJsonPath('data.uuid', $user->uuid)
+        ->assertJsonMissingPath('data.id');
 });
 
 it('returns 401 when the user is not authenticated', function () {
@@ -88,8 +91,9 @@ it('returns the authenticated user for a bearer token', function () {
     $this->withToken($token)
         ->getJson('/api/me')
         ->assertOk()
-        ->assertJsonPath('data.id', $user->id)
-        ->assertJsonMissingPath('data.password');
+        ->assertJsonPath('data.uuid', $user->uuid)
+        ->assertJsonMissingPath('data.password')
+        ->assertJsonMissingPath('data.id');
 });
 
 it('revokes the current token on logout', function () {
