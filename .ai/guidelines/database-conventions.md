@@ -56,10 +56,12 @@ $table->index('uuid', 'users_uuid_hash_index', 'hash');
 - They are nullable `bigint`, the same type as `id`, and have no foreign key constraint:
 
 ```php
-$table->foreignId('created_by')->nullable();
-$table->foreignId('updated_by')->nullable();
-$table->foreignId('deleted_by')->nullable();
+$table->unsignedBigInteger('created_by')->nullable();
+$table->unsignedBigInteger('updated_by')->nullable();
+$table->unsignedBigInteger('deleted_by')->nullable();
 ```
+
+- These are audit columns, not relations. Do not attach `constrained()` or any foreign key constraint.
 
 - The `HasAuditColumns` concern fills them from `Auth::id()`: `created_by` and `updated_by` on create, `updated_by` on update, `deleted_by` on soft delete, and clears `deleted_by` on restore.
 - They stay null for console and queue work because no actor is authenticated.
