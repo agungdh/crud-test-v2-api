@@ -41,7 +41,6 @@ class UpdatePegawaiRequest extends FormRequest
                     }
 
                     $exists = User::query()
-                        ->whereNull('deleted_at')
                         ->whereRaw('lower(email) = lower(?)', [$value])
                         ->whereKeyNot($pegawai->user_id)
                         ->exists();

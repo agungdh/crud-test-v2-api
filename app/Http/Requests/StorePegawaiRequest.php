@@ -36,7 +36,6 @@ class StorePegawaiRequest extends FormRequest
                     }
 
                     $exists = User::query()
-                        ->whereNull('deleted_at')
                         ->whereRaw('lower(email) = lower(?)', [$value])
                         ->exists();
 
