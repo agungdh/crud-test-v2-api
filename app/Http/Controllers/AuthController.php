@@ -62,6 +62,8 @@ class AuthController extends Controller
      */
     public function me(Request $request): UserResource
     {
-        return UserResource::make($request->user());
+        return UserResource::make(
+            $this->authService->profile($request->user()),
+        );
     }
 }

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Pegawai;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 
@@ -22,6 +23,7 @@ it('returns a bearer token for a valid mobile login', function () {
         ->assertJsonPath('user.uuid', $user->uuid)
         ->assertJsonPath('user.username', $user->username)
         ->assertJsonMissingPath('user.id')
+        ->assertJsonMissingPath('user.pegawai')
         ->assertJsonPath('token_type', 'Bearer')
         ->assertJsonStructure([
             'user' => ['uuid', 'email', 'username'],
@@ -143,6 +145,30 @@ it('returns the authenticated user for a bearer token', function () {
         ->assertJsonPath('data.username', $user->username)
         ->assertJsonMissingPath('data.password')
         ->assertJsonMissingPath('data.id');
+});
+
+it('eager loads the pegawai profile for the authenticated user', function () {
+    $user = User::factory()->create();
+    $pegawai = Pegawai::factory()->create(['user_id' => $user->id]);
+    $token = $user->createToken('mobile')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/me')
+        ->assertOk()
+        ->assertJsonPath('data.uuid', $user->uuid)
+        ->assertJsonPath('data.pegawai.uuid', $pegawai->uuid)
+        ->assertJsonPath('data.pegawai.nip', $pegawai->nip)
+        ->assertJsonMissingPath('data.pegawai.user');
+});
+
+it('returns a null pegawai when the authenticated user has no profile', function () {
+    $user = User::factory()->create();
+    $token = $user->createToken('mobile')->plainTextToken;
+
+    $this->withToken($token)
+        ->getJson('/api/me')
+        ->assertOk()
+        ->assertJsonPath('data.pegawai', null);
 });
 
 it('revokes the current token on logout', function () {

@@ -18,6 +18,10 @@ class UserResource extends JsonResource
             'uuid' => $this->uuid,
             'email' => $this->email,
             'username' => $this->username,
+            'pegawai' => $this->when(
+                $this->resource->relationLoaded('pegawai'),
+                fn () => $this->pegawai ? PegawaiResource::make($this->pegawai) : null,
+            ),
         ];
     }
 }

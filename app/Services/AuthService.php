@@ -41,6 +41,14 @@ class AuthService
     }
 
     /**
+     * Load the pegawai profile for the given user.
+     */
+    public function profile(User $user): User
+    {
+        return $user->load('pegawai');
+    }
+
+    /**
      * Revoke the access token used for the current request, if any.
      */
     public function revokeCurrentToken(User $user): void
