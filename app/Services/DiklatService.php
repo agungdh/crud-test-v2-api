@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\BerkasUpload;
 use App\Models\Diklat;
 use App\Models\JenisPelatihan;
 use App\Models\Pegawai;
@@ -18,6 +17,8 @@ use Throwable;
 class DiklatService
 {
     private const BERKAS_DISK = 's3';
+
+    private const BERKAS_DIRECTORY = 'diklat';
 
     public function __construct(private BerkasUploadService $berkasUploadService)
     {
@@ -58,30 +59,25 @@ class DiklatService
     }
 
     /**
-     * @param  array{jenis_pelatihan_uuid: string, nomor_surat: string, materi_pengembangan: string, dari_tanggal_pelaksanaan: string, sampai_tanggal_pelaksanaan: string, jumlah_jam_pelatihan: int, berkas_uuid?: string|null}  $data
+     * @param  array{jenis_pelatihan_uuid: string, nomor_surat: string, materi_pengembangan: string, dari_tanggal_pelaksanaan: string, sampai_tanggal_pelaksanaan: string, jumlah_jam_pelatihan: int, berkas_path?: string|null}  $data
      */
     public function create(User $user, array $data): Diklat
     {
         $pegawai = $this->pegawaiOf($user);
-        $upload = null;
+        $temporaryPath = $data['berkas_path'] ?? null;
         $promoted = null;
 
         try {
-            $diklat = DB::transaction(function () use ($user, $pegawai, $data, &$upload, &$promoted): Diklat {
+            $diklat = DB::transaction(function () use ($pegawai, $data, $temporaryPath, &$promoted): Diklat {
                 $diklat = $pegawai->diklat()->create([
-                    ...Arr::except($data, ['jenis_pelatihan_uuid', 'berkas_uuid']),
+                    ...Arr::except($data, ['jenis_pelatihan_uuid', 'berkas_path']),
                     'jenis_pelatihan_id' => $this->jenisPelatihanId($data['jenis_pelatihan_uuid']),
                 ]);
 
-                $upload = $this->claimBerkas($user, $data['berkas_uuid'] ?? null);
+                if (filled($temporaryPath)) {
+                    $promoted = $this->berkasUploadService->promote($temporaryPath, self::BERKAS_DIRECTORY);
 
-                if ($upload instanceof BerkasUpload) {
-                    $promoted = $this->berkasUploadService->promote($upload, "diklat/{$diklat->uuid}");
-
-                    $diklat->update([
-                        'berkas_path' => $promoted,
-                        'berkas_filename' => $upload->original_filename,
-                    ]);
+                    $diklat->update(['berkas_path' => $promoted]);
                 }
 
                 return $diklat->load(['pegawai', 'jenisPelatihan']);
@@ -94,8 +90,8 @@ class DiklatService
             throw $exception;
         }
 
-        if ($upload instanceof BerkasUpload) {
-            $this->berkasUploadService->deleteTemporary($upload);
+        if (filled($temporaryPath)) {
+            $this->berkasUploadService->deleteTemporary($temporaryPath);
         }
 
         return $diklat;
@@ -109,36 +105,33 @@ class DiklatService
     }
 
     /**
-     * @param  array{jenis_pelatihan_uuid: string, nomor_surat: string, materi_pengembangan: string, dari_tanggal_pelaksanaan: string, sampai_tanggal_pelaksanaan: string, jumlah_jam_pelatihan: int, berkas_uuid?: string|null}  $data
+     * @param  array{jenis_pelatihan_uuid: string, nomor_surat: string, materi_pengembangan: string, dari_tanggal_pelaksanaan: string, sampai_tanggal_pelaksanaan: string, jumlah_jam_pelatihan: int, berkas_path?: string|null}  $data
      */
     public function update(User $user, Diklat $diklat, array $data): Diklat
     {
         $this->ensureOwnedBy($user, $diklat);
 
-        $upload = null;
+        $temporaryPath = $data['berkas_path'] ?? null;
         $promoted = null;
         $replacedPath = null;
-        $replacesBerkas = array_key_exists('berkas_uuid', $data);
+        $replacesBerkas = array_key_exists('berkas_path', $data);
 
         try {
-            DB::transaction(function () use ($user, $diklat, $data, $replacesBerkas, &$upload, &$promoted, &$replacedPath): void {
+            DB::transaction(function () use ($diklat, $data, $temporaryPath, $replacesBerkas, &$promoted, &$replacedPath): void {
                 $attributes = [
-                    ...Arr::except($data, ['jenis_pelatihan_uuid', 'berkas_uuid']),
+                    ...Arr::except($data, ['jenis_pelatihan_uuid', 'berkas_path']),
                     'jenis_pelatihan_id' => $this->jenisPelatihanId($data['jenis_pelatihan_uuid']),
                 ];
 
                 if ($replacesBerkas) {
                     $replacedPath = $diklat->berkas_path;
-                    $upload = $this->claimBerkas($user, $data['berkas_uuid']);
 
-                    if ($upload instanceof BerkasUpload) {
-                        $promoted = $this->berkasUploadService->promote($upload, "diklat/{$diklat->uuid}");
+                    if (filled($temporaryPath)) {
+                        $promoted = $this->berkasUploadService->promote($temporaryPath, self::BERKAS_DIRECTORY);
 
                         $attributes['berkas_path'] = $promoted;
-                        $attributes['berkas_filename'] = $upload->original_filename;
                     } else {
                         $attributes['berkas_path'] = null;
-                        $attributes['berkas_filename'] = null;
                     }
                 }
 
@@ -152,8 +145,8 @@ class DiklatService
             throw $exception;
         }
 
-        if ($upload instanceof BerkasUpload) {
-            $this->berkasUploadService->deleteTemporary($upload);
+        if (filled($temporaryPath)) {
+            $this->berkasUploadService->deleteTemporary($temporaryPath);
         }
 
         if ($replacesBerkas && filled($replacedPath)) {
@@ -204,17 +197,5 @@ class DiklatService
     private function jenisPelatihanId(string $uuid): int
     {
         return JenisPelatihan::query()->where('uuid', $uuid)->firstOrFail()->id;
-    }
-
-    /**
-     * Claim a pending upload for consumption, if one was provided.
-     */
-    private function claimBerkas(User $user, ?string $uuid): ?BerkasUpload
-    {
-        if (blank($uuid)) {
-            return null;
-        }
-
-        return $this->berkasUploadService->claim($user, $uuid);
     }
 }

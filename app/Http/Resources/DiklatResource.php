@@ -24,7 +24,6 @@ class DiklatResource extends JsonResource
             'dari_tanggal_pelaksanaan' => $this->dari_tanggal_pelaksanaan->toDateString(),
             'sampai_tanggal_pelaksanaan' => $this->sampai_tanggal_pelaksanaan->toDateString(),
             'jumlah_jam_pelatihan' => $this->jumlah_jam_pelatihan,
-            'berkas_filename' => $this->berkas_filename,
             'berkas_url' => $this->berkasUrl(),
         ];
     }

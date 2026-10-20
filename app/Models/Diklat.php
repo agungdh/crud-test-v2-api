@@ -22,7 +22,6 @@ use Illuminate\Support\Facades\Auth;
     'sampai_tanggal_pelaksanaan',
     'jumlah_jam_pelatihan',
     'berkas_path',
-    'berkas_filename',
 ])]
 class Diklat extends Model
 {

@@ -4,7 +4,6 @@ namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Facades\Storage;
 
 class BerkasUploadResource extends JsonResource
 {
@@ -15,18 +14,12 @@ class BerkasUploadResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $presigned = Storage::disk('s3-temp')->temporaryUploadUrl(
-            $this->object_key,
-            $this->upload_url_expires_at,
-            ['IfNoneMatch' => '*'],
-        );
-
         return [
-            'uuid' => $this->uuid,
-            'filename' => $this->original_filename,
-            'upload_url' => $presigned['url'],
-            'headers' => $this->headers($presigned['headers']),
-            'expires_at' => $this->upload_url_expires_at->toIso8601ZuluString(),
+            'path' => $this->resource['path'],
+            'filename' => $this->resource['filename'],
+            'upload_url' => $this->resource['upload_url'],
+            'headers' => $this->headers($this->resource['headers']),
+            'expires_at' => $this->resource['expires_at'],
         ];
     }
 

@@ -2,14 +2,12 @@
 
 namespace App\Services;
 
-use App\Models\BerkasUpload;
-use App\Models\User;
+use App\Support\BerkasPath;
 use finfo;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
-use Throwable;
 
 class BerkasUploadService
 {
@@ -29,92 +27,75 @@ class BerkasUploadService
     ];
 
     /**
-     * Create a pending upload and return the model the presigned URL is built from.
+     * Create a presigned upload for an empty temporary object.
      *
      * @param  array{filename: string}  $data
+     * @return array{path: string, filename: string, upload_url: string, headers: array<string, array<int, string>>, expires_at: string}
      */
-    public function presign(User $user, array $data): BerkasUpload
+    public function presign(array $data): array
     {
-        $extension = mb_strtolower(pathinfo($data['filename'], PATHINFO_EXTENSION));
+        $path = BerkasPath::make();
+        $expiresAt = now()->addMinutes(
+            (int) config('filesystems.disks.s3-temp.upload_ttl', 15),
+        );
 
-        return BerkasUpload::create([
-            'user_id' => $user->id,
-            'object_key' => 'upload/'.Str::ulid().'.'.$extension,
-            'original_filename' => $data['filename'],
-            'upload_url_expires_at' => now()->addMinutes(
-                (int) config('filesystems.disks.s3-temp.upload_ttl', 15),
-            ),
-            'purge_at' => now()->addMinutes(
-                (int) config('filesystems.disks.s3-temp.purge_ttl', 1440),
-            ),
-        ]);
+        $presigned = Storage::disk(self::TEMP_DISK)->temporaryUploadUrl(
+            $path,
+            $expiresAt,
+            ['IfNoneMatch' => '*'],
+        );
+
+        return [
+            'path' => $path,
+            'filename' => $data['filename'],
+            'upload_url' => $presigned['url'],
+            'headers' => $presigned['headers'],
+            'expires_at' => $expiresAt->toIso8601ZuluString(),
+        ];
     }
 
     /**
-     * Lock an upload for attaching to another record.
-     *
-     * This method must be called inside a database transaction so the row lock
-     * holds until the consuming write commits.
-     */
-    public function claim(User $user, string $uuid): BerkasUpload
-    {
-        $upload = BerkasUpload::query()
-            ->where('uuid', $uuid)
-            ->where('user_id', $user->id)
-            ->whereNull('consumed_at')
-            ->where('purge_at', '>', now())
-            ->lockForUpdate()
-            ->first();
-
-        if (! $upload) {
-            throw ValidationException::withMessages([
-                'berkas_uuid' => 'The selected file is invalid or has already been used.',
-            ]);
-        }
-
-        return $upload;
-    }
-
-    /**
-     * Verify the temporary object and copy it into the permanent bucket.
+     * Verify a temporary object and copy it into the permanent bucket.
      *
      * Returns the permanent object key. The temporary object is left in place
      * so the caller can remove it only after the database write commits.
      */
-    public function promote(BerkasUpload $upload, string $directory): string
+    public function promote(string $temporaryPath, string $module): string
     {
         $tempDisk = Storage::disk(self::TEMP_DISK);
+        $purgeTtl = (int) config('filesystems.disks.s3-temp.purge_ttl', 1440);
 
-        if (! $tempDisk->exists($upload->object_key)) {
+        if (BerkasPath::isExpired($temporaryPath, $purgeTtl) || ! $tempDisk->exists($temporaryPath)) {
             throw ValidationException::withMessages([
-                'berkas_uuid' => 'The file has not been uploaded or has expired.',
+                'berkas_path' => 'The file has not been uploaded or has expired.',
             ]);
         }
 
-        $size = (int) $tempDisk->size($upload->object_key);
+        $size = (int) $tempDisk->size($temporaryPath);
 
         if ($size > self::MAX_BYTES) {
             throw ValidationException::withMessages([
-                'berkas_uuid' => 'The file may not be greater than 10 MB.',
+                'berkas_path' => 'The file may not be greater than 10 MB.',
             ]);
         }
 
-        $mimeType = $this->detectMimeType($tempDisk->readStream($upload->object_key));
+        $mimeType = $this->detectMimeType($tempDisk->readStream($temporaryPath));
         $extension = self::ALLOWED_MIME_TYPES[$mimeType] ?? null;
 
         if ($extension === null) {
             throw ValidationException::withMessages([
-                'berkas_uuid' => 'The file type is not supported.',
+                'berkas_path' => 'The file type is not supported.',
             ]);
         }
 
-        $destination = trim($directory, '/').'/'.Str::ulid().'.'.$extension;
-        $stream = $tempDisk->readStream($upload->object_key);
+        $filename = Str::uuid()->toString();
+        $destination = trim($module, '/').'/'.$filename;
+        $stream = $tempDisk->readStream($temporaryPath);
 
         try {
             $written = Storage::disk(self::PERMANENT_DISK)->writeStream($destination, $stream, [
                 'ContentType' => $mimeType,
-                'ContentDisposition' => 'attachment; filename="'.addslashes($upload->original_filename).'"',
+                'ContentDisposition' => 'attachment; filename="'.$filename.'.'.$extension.'"',
             ]);
         } finally {
             if (is_resource($stream)) {
@@ -124,18 +105,6 @@ class BerkasUploadService
 
         if (! $written) {
             throw new RuntimeException('Unable to copy the uploaded file to the permanent bucket.');
-        }
-
-        try {
-            $upload->update([
-                'mime_type' => $mimeType,
-                'size' => $size,
-                'consumed_at' => now(),
-            ]);
-        } catch (Throwable $exception) {
-            Storage::disk(self::PERMANENT_DISK)->delete($destination);
-
-            throw $exception;
         }
 
         return $destination;
@@ -152,25 +121,9 @@ class BerkasUploadService
     /**
      * Delete a temporary object after the consuming transaction commits.
      */
-    public function deleteTemporary(BerkasUpload $upload): void
+    public function deleteTemporary(string $path): void
     {
-        Storage::disk(self::TEMP_DISK)->delete($upload->object_key);
-    }
-
-    /**
-     * Cancel a pending upload.
-     */
-    public function delete(BerkasUpload $upload): void
-    {
-        if ($upload->consumed_at !== null) {
-            throw ValidationException::withMessages([
-                'berkas_uuid' => 'The file has already been used.',
-            ]);
-        }
-
-        Storage::disk(self::TEMP_DISK)->delete($upload->object_key);
-
-        $upload->delete();
+        Storage::disk(self::TEMP_DISK)->delete($path);
     }
 
     /**
@@ -180,7 +133,7 @@ class BerkasUploadService
     {
         if (! is_resource($stream)) {
             throw ValidationException::withMessages([
-                'berkas_uuid' => 'The file has not been uploaded or has expired.',
+                'berkas_path' => 'The file has not been uploaded or has expired.',
             ]);
         }
 
