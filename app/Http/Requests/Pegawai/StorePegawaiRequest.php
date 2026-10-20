@@ -1,15 +1,14 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Pegawai;
 
-use App\Models\Pegawai;
 use App\Models\User;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class UpdatePegawaiRequest extends FormRequest
+class StorePegawaiRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -26,23 +25,18 @@ class UpdatePegawaiRequest extends FormRequest
      */
     public function rules(): array
     {
-        /** @var Pegawai $pegawai */
-        $pegawai = $this->route('pegawai');
-
         return [
             'email' => [
-                'present',
                 'nullable',
                 'email',
                 'max:255',
-                function (string $attribute, mixed $value, Closure $fail) use ($pegawai): void {
+                function (string $attribute, mixed $value, Closure $fail): void {
                     if ($value === null) {
                         return;
                     }
 
                     $exists = User::query()
                         ->whereRaw('lower(email) = lower(?)', [$value])
-                        ->whereKeyNot($pegawai->user_id)
                         ->exists();
 
                     if ($exists) {
@@ -50,20 +44,20 @@ class UpdatePegawaiRequest extends FormRequest
                     }
                 },
             ],
-            'password' => ['sometimes', 'nullable', 'string', 'min:8'],
+            'password' => ['required', 'string', 'min:8'],
             'nip' => [
                 'required',
                 'string',
                 'max:30',
-                Rule::unique('pegawai', 'nip')->whereNull('deleted_at')->ignore($pegawai),
-                Rule::unique('users', 'username')->whereNull('deleted_at')->ignore($pegawai->user_id),
+                Rule::unique('pegawai', 'nip')->whereNull('deleted_at'),
+                Rule::unique('users', 'username')->whereNull('deleted_at'),
             ],
             'nama' => ['required', 'string', 'max:255'],
-            'tanggal_lahir' => ['present', 'nullable', 'date'],
-            'jabatan' => ['present', 'nullable', 'string', 'max:255'],
-            'bidang' => ['present', 'nullable', 'string', 'max:255'],
-            'gender' => ['present', 'nullable', Rule::in(['male', 'female'])],
-            'tmt' => ['present', 'nullable', 'date'],
+            'tanggal_lahir' => ['nullable', 'date'],
+            'jabatan' => ['nullable', 'string', 'max:255'],
+            'bidang' => ['nullable', 'string', 'max:255'],
+            'gender' => ['nullable', Rule::in(['male', 'female'])],
+            'tmt' => ['nullable', 'date'],
         ];
     }
 }

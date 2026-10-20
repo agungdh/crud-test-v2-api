@@ -1,14 +1,15 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Pegawai;
 
+use App\Models\Pegawai;
 use App\Models\User;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StorePegawaiRequest extends FormRequest
+class UpdatePegawaiRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -25,18 +26,23 @@ class StorePegawaiRequest extends FormRequest
      */
     public function rules(): array
     {
+        /** @var Pegawai $pegawai */
+        $pegawai = $this->route('pegawai');
+
         return [
             'email' => [
+                'present',
                 'nullable',
                 'email',
                 'max:255',
-                function (string $attribute, mixed $value, Closure $fail): void {
+                function (string $attribute, mixed $value, Closure $fail) use ($pegawai): void {
                     if ($value === null) {
                         return;
                     }
 
                     $exists = User::query()
                         ->whereRaw('lower(email) = lower(?)', [$value])
+                        ->whereKeyNot($pegawai->user_id)
                         ->exists();
 
                     if ($exists) {
@@ -44,20 +50,20 @@ class StorePegawaiRequest extends FormRequest
                     }
                 },
             ],
-            'password' => ['required', 'string', 'min:8'],
+            'password' => ['sometimes', 'nullable', 'string', 'min:8'],
             'nip' => [
                 'required',
                 'string',
                 'max:30',
-                Rule::unique('pegawai', 'nip')->whereNull('deleted_at'),
-                Rule::unique('users', 'username')->whereNull('deleted_at'),
+                Rule::unique('pegawai', 'nip')->whereNull('deleted_at')->ignore($pegawai),
+                Rule::unique('users', 'username')->whereNull('deleted_at')->ignore($pegawai->user_id),
             ],
             'nama' => ['required', 'string', 'max:255'],
-            'tanggal_lahir' => ['nullable', 'date'],
-            'jabatan' => ['nullable', 'string', 'max:255'],
-            'bidang' => ['nullable', 'string', 'max:255'],
-            'gender' => ['nullable', Rule::in(['male', 'female'])],
-            'tmt' => ['nullable', 'date'],
+            'tanggal_lahir' => ['present', 'nullable', 'date'],
+            'jabatan' => ['present', 'nullable', 'string', 'max:255'],
+            'bidang' => ['present', 'nullable', 'string', 'max:255'],
+            'gender' => ['present', 'nullable', Rule::in(['male', 'female'])],
+            'tmt' => ['present', 'nullable', 'date'],
         ];
     }
 }

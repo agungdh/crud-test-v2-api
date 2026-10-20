@@ -6,7 +6,7 @@ This project keeps HTTP concerns, business logic, and response shaping in separa
 
 | Layer | Owns | Must not do |
 | --- | --- | --- |
-| Form Request (`app/Http/Requests`) | Validation rules and authorization | Business logic, database writes |
+| Form Request (`app/Http/Requests/{Domain}`) | Validation rules and authorization | Business logic, database writes |
 | Controller (`app/Http/Controllers`) | Orchestration: resolve input, call one Service use-case, return the response | Queries, `DB::transaction()`, hashing, validation, business rules |
 | Service (`app/Services`) | Business logic and orchestration | `Request`, `response()`, `abort()`, `session()`, `Auth`, Resources |
 | API Resource (`app/Http/Resources`) | Response presentation | Queries, business logic, writes |
@@ -14,12 +14,14 @@ This project keeps HTTP concerns, business logic, and response shaping in separa
 
 Do not add repositories, action classes, or separate DTO folders unless the user explicitly asks for them.
 
-## File layout (flat)
+## File layout (layered, requests grouped by domain)
 
-- Controllers: `app/Http/Controllers/PostController.php` — one resource controller per model.
-- Requests: `app/Http/Requests/StorePostRequest.php` and `UpdatePostRequest.php` — one class per endpoint that accepts input.
-- Services: `app/Services/PostService.php` — one per domain, suffixed `Service`, with use-case method names (`paginate`, `create`, `update`, `delete`).
-- Resources: `app/Http/Resources/PostResource.php` — one per model.
+- Controllers: `app/Http/Controllers/PostController.php` — one resource controller per model, flat.
+- Requests: `app/Http/Requests/Post/StorePostRequest.php` and `UpdatePostRequest.php` — one folder per domain, one class per endpoint that accepts input. The namespace matches the folder, for example `App\Http\Requests\Post`.
+- Services: `app/Services/PostService.php` — one per domain, flat, suffixed `Service`, with use-case method names (`paginate`, `create`, `update`, `delete`).
+- Resources: `app/Http/Resources/PostResource.php` — one per model, flat.
+
+Only Form Requests are grouped by domain. Controllers, Services, Models, and Resources stay in their flat layer folders.
 
 ## Rules
 

@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\ListJenisPelatihanRequest;
-use App\Http\Requests\StoreJenisPelatihanRequest;
-use App\Http\Requests\UpdateJenisPelatihanRequest;
+use App\Http\Requests\JenisPelatihan\ListJenisPelatihanRequest;
+use App\Http\Requests\JenisPelatihan\StoreJenisPelatihanRequest;
+use App\Http\Requests\JenisPelatihan\UpdateJenisPelatihanRequest;
 use App\Http\Resources\JenisPelatihanResource;
 use App\Models\JenisPelatihan;
 use App\Services\JenisPelatihanService;

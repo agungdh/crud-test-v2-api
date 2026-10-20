@@ -1,13 +1,13 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\JenisPelatihan;
 
 use App\Models\JenisPelatihan;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class UpdateJenisPelatihanRequest extends FormRequest
+class StoreJenisPelatihanRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -24,18 +24,14 @@ class UpdateJenisPelatihanRequest extends FormRequest
      */
     public function rules(): array
     {
-        /** @var JenisPelatihan $jenisPelatihan */
-        $jenisPelatihan = $this->route('jenis_pelatihan');
-
         return [
             'jenis_pelatihan' => [
                 'required',
                 'string',
                 'max:255',
-                function (string $attribute, mixed $value, Closure $fail) use ($jenisPelatihan): void {
+                function (string $attribute, mixed $value, Closure $fail): void {
                     $exists = JenisPelatihan::query()
                         ->whereRaw('lower(jenis_pelatihan) = lower(?)', [(string) $value])
-                        ->whereKeyNot($jenisPelatihan->id)
                         ->exists();
 
                     if ($exists) {

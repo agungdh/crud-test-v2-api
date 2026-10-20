@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\ListPegawaiRequest;
-use App\Http\Requests\StorePegawaiRequest;
-use App\Http\Requests\UpdatePegawaiRequest;
+use App\Http\Requests\Pegawai\ListPegawaiRequest;
+use App\Http\Requests\Pegawai\StorePegawaiRequest;
+use App\Http\Requests\Pegawai\UpdatePegawaiRequest;
 use App\Http\Resources\PegawaiResource;
 use App\Models\Pegawai;
 use App\Services\PegawaiService;

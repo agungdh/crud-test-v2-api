@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreBerkasUploadRequest;
+use App\Http\Requests\Berkas\StoreBerkasUploadRequest;
 use App\Http\Resources\BerkasUploadResource;
 use App\Services\BerkasUploadService;
 use Illuminate\Http\JsonResponse;

@@ -1,18 +1,18 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Diklat;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
-class ListJenisPelatihanRequest extends FormRequest
+class ListDiklatRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
      */
     public function authorize(): bool
     {
-        return true;
+        return $this->user()?->pegawai()->exists() ?? false;
     }
 
     /**
@@ -24,6 +24,9 @@ class ListJenisPelatihanRequest extends FormRequest
     {
         return [
             'search' => ['nullable', 'string', 'max:255'],
+            'jenis_pelatihan_uuid' => ['nullable', 'uuid'],
+            'dari_tanggal' => ['nullable', 'date'],
+            'sampai_tanggal' => ['nullable', 'date', 'after_or_equal:dari_tanggal'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
     }

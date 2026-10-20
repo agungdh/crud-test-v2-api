@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\ListDiklatRequest;
-use App\Http\Requests\StoreDiklatRequest;
-use App\Http\Requests\UpdateDiklatRequest;
+use App\Http\Requests\Diklat\ListDiklatRequest;
+use App\Http\Requests\Diklat\StoreDiklatRequest;
+use App\Http\Requests\Diklat\UpdateDiklatRequest;
 use App\Http\Resources\DiklatResource;
 use App\Models\Diklat;
 use App\Services\DiklatService;

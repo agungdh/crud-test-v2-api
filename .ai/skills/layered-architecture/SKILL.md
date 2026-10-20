@@ -1,6 +1,6 @@
 ---
 name: layered-architecture
-description: "Use when adding or changing any API feature in this project: new endpoints, CRUD resources, controllers, Form Requests, Services, or API Resources. Defines the layer contract (Request validates, Controller orchestrates, Service holds logic, Resource shapes the response), the flat file layout and naming, the code skeletons to copy, error and authorization handling, and the review checklist before finishing."
+description: "Use when adding or changing any API feature in this project: new endpoints, CRUD resources, controllers, Form Requests, Services, or API Resources. Defines the layer contract (Request validates, Controller orchestrates, Service holds logic, Resource shapes the response), the domain-grouped Form Request layout, the code skeletons to copy, error and authorization handling, and the review checklist before finishing."
 ---
 
 # Layered Architecture
@@ -13,7 +13,7 @@ A request flows `Route → Form Request → Controller → Service → Model`, a
 
 | Layer | Owns | Must not do |
 | --- | --- | --- |
-| Form Request (`app/Http/Requests`) | Validation rules and authorization | Business logic, database writes |
+| Form Request (`app/Http/Requests/{Domain}`) | Validation rules and authorization | Business logic, database writes |
 | Controller (`app/Http/Controllers`) | Orchestration: resolve input, call one Service use-case, return the response | Queries, `DB::transaction()`, hashing, validation, business rules |
 | Service (`app/Services`) | Business logic and orchestration | HTTP: `Request`, `response()`, `abort()`, `session()`, `Auth`, Resources |
 | API Resource (`app/Http/Resources`) | Response presentation | Queries, business logic, writes |
@@ -21,19 +21,21 @@ A request flows `Route → Form Request → Controller → Service → Model`, a
 
 Do not introduce repositories, action classes, or separate DTO folders unless the user explicitly asks for them.
 
-## Layout and naming (flat)
+## Layout and naming (requests grouped by domain)
 
-- Controllers: `app/Http/Controllers/PostController.php` — one resource controller per model, RESTful methods `index`, `show`, `store`, `update`, `destroy`.
-- Requests: `app/Http/Requests/StorePostRequest.php`, `app/Http/Requests/UpdatePostRequest.php` — one class per endpoint that accepts input, flat, no domain subfolders.
+- Controllers: `app/Http/Controllers/PostController.php` — one resource controller per model, RESTful methods `index`, `show`, `store`, `update`, `destroy`, flat.
+- Requests: `app/Http/Requests/Post/StorePostRequest.php`, `app/Http/Requests/Post/UpdatePostRequest.php` — one folder per domain, one class per endpoint that accepts input. The namespace matches the folder, for example `App\Http\Requests\Post`.
 - Services: `app/Services/PostService.php` — one service per domain, flat, suffixed `Service`. Method names are use-case verbs: `paginate`, `create`, `update`, `delete`; never a generic `handle` or `execute` catch-all.
-- Resources: `app/Http/Resources/PostResource.php` — one per model.
+- Resources: `app/Http/Resources/PostResource.php` — one per model, flat.
+
+Only Form Requests are grouped by domain. Controllers, Services, Models, and Resources stay in their flat layer folders.
 
 Create files with Artisan, not by hand:
 
 ```bash
 php artisan make:controller PostController --resource --model=Post --no-interaction
-php artisan make:request StorePostRequest --no-interaction
-php artisan make:request UpdatePostRequest --no-interaction
+php artisan make:request Post/StorePostRequest --no-interaction
+php artisan make:request Post/UpdatePostRequest --no-interaction
 php artisan make:class Services/PostService --no-interaction
 php artisan make:resource PostResource --no-interaction
 ```
@@ -94,7 +96,7 @@ Keep `rules()` and `authorize()` here. Authorization for a model ability delegat
 ```php
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Post;
 
 use App\Models\Post;
 use Illuminate\Foundation\Http\FormRequest;
@@ -128,9 +130,9 @@ The controller reads validated input, calls exactly one Service method per actio
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\ListPostsRequest;
-use App\Http\Requests\StorePostRequest;
-use App\Http\Requests\UpdatePostRequest;
+use App\Http\Requests\Post\ListPostsRequest;
+use App\Http\Requests\Post\StorePostRequest;
+use App\Http\Requests\Post\UpdatePostRequest;
 use App\Http\Resources\PostResource;
 use App\Models\Post;
 use App\Services\PostService;

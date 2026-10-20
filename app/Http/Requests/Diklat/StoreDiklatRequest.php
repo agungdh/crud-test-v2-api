@@ -1,13 +1,13 @@
 <?php
 
-namespace App\Http\Requests;
+namespace App\Http\Requests\Diklat;
 
 use App\Support\BerkasPath;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class UpdateDiklatRequest extends FormRequest
+class StoreDiklatRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -19,9 +19,6 @@ class UpdateDiklatRequest extends FormRequest
 
     /**
      * Get the validation rules that apply to the request.
-     *
-     * The attachment is keep-or-replace: an omitted key keeps the stored file
-     * and an explicit null removes it.
      *
      * @return array<string, ValidationRule|array<mixed>|string>
      */
@@ -39,7 +36,6 @@ class UpdateDiklatRequest extends FormRequest
             'sampai_tanggal_pelaksanaan' => ['required', 'date', 'after_or_equal:dari_tanggal_pelaksanaan'],
             'jumlah_jam_pelatihan' => ['required', 'integer', 'min:1'],
             'berkas_path' => [
-                'sometimes',
                 'nullable',
                 'string',
                 'max:50',
