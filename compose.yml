@@ -10,7 +10,6 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
-      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d crud"]
       interval: 10s
@@ -48,22 +47,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
-  minio-init:
-    image: pgsty/silo:latest
-    restart: "no"
-    depends_on:
-      minio:
-        condition: service_healthy
-    environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: admin123
-      AWS_BUCKET: crud-test
-      AWS_TEMP_BUCKET: crud-test-temp
-    volumes:
-      - ./docker/minio/init.sh:/config/init.sh:ro
-      - ./docker/minio/cors.xml:/config/cors.xml:ro
-    entrypoint: ["/bin/sh", "/config/init.sh"]
 
   adminer:
     image: adminer:latest
