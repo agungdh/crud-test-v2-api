@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Models\Pegawai;
 use App\Models\User;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use App\Support\CursorPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -12,13 +12,13 @@ use Illuminate\Support\Facades\DB;
 class PegawaiService
 {
     /**
-     * @param  array{search?: string|null, per_page?: int|null}  $filters
+     * @param  array{search?: string|null, cursor?: string|null}  $filters
      */
-    public function paginate(array $filters): LengthAwarePaginator
+    public function paginate(array $filters): CursorPage
     {
         $search = $filters['search'] ?? null;
 
-        return Pegawai::query()
+        $query = Pegawai::query()
             ->with('user')
             ->when($search, function (Builder $query, string $search): void {
                 $query->where(function (Builder $query) use ($search): void {
@@ -30,9 +30,9 @@ class PegawaiService
                             $query->whereRaw('lower(email) like ?', ['%'.mb_strtolower($search).'%']);
                         });
                 });
-            })
-            ->latest('id')
-            ->paginate($filters['per_page'] ?? 15);
+            });
+
+        return CursorPage::fromQuery($query, $filters['cursor'] ?? null);
     }
 
     /**

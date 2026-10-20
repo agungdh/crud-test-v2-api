@@ -27,7 +27,7 @@ class ListDiklatRequest extends FormRequest
             'jenis_pelatihan_uuid' => ['nullable', 'uuid'],
             'dari_tanggal' => ['nullable', 'date'],
             'sampai_tanggal' => ['nullable', 'date', 'after_or_equal:dari_tanggal'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'cursor' => ['nullable', 'uuid'],
         ];
     }
 }

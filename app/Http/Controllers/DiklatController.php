@@ -21,9 +21,10 @@ class DiklatController extends Controller
 
     public function index(ListDiklatRequest $request): AnonymousResourceCollection
     {
-        return DiklatResource::collection(
-            $this->diklatService->paginate($request->user(), $request->validated()),
-        );
+        $page = $this->diklatService->paginate($request->user(), $request->validated());
+
+        return DiklatResource::collection($page->items)
+            ->additional(['meta' => ['next_cursor' => $page->nextCursor]]);
     }
 
     public function store(StoreDiklatRequest $request): JsonResponse

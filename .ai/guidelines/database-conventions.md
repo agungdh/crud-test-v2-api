@@ -83,7 +83,7 @@ $table->index('deleted_at');
 - They stay null for console and queue work because no actor is authenticated.
 - Mass deletes through the query builder (`Model::where(...)->delete()`) skip model events and leave `deleted_by` null. Use `Model::delete()` on an instance for audited models.
 - Audit columns are database-only. Never expose `created_by`, `updated_by`, `deleted_by`, `created_at`, `updated_at`, or `deleted_at` in API Resources or any response.
-- Do not use audit columns as application data either: no ordering, filtering, or decisions on `created_at`; order by the primary key for insertion order. When the app needs a meaningful timestamp, add its own column, such as `submission_time`.
+- Do not use audit columns as application data either: no ordering, filtering, or decisions on `created_at`; order by the primary key for insertion order. List endpoints default to newest first with `orderByDesc('id')` unless they document a specific business order, and cursor pagination keysets on the primary key. When the app needs a meaningful timestamp, add its own column, such as `submission_time`.
 - `HasAuditColumns` hides all six columns from model array and JSON serialization. A Resource that lists them explicitly still leaks them, so keep them out of `toArray()`.
 
 ## Soft deletes

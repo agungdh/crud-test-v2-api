@@ -27,10 +27,40 @@ Only Form Requests are grouped by domain. Controllers, Services, Models, and Res
 
 - Controllers stay thin: inject the Service through the constructor, call one use-case method, and return a Resource or `JsonResponse`. No queries, transactions, hashing, validation, or business rules here.
 - Every endpoint that accepts input has its own Form Request holding `rules()` and `authorize()`. Read input with `validated()` only, never `all()` or `input()`, and pass that array to the Service. No inline `$request->validate()`.
-- Services receive the `validated()` array, own business logic, wrap multi-write work in `DB::transaction()`, and return models, collections, or paginators. Type the expected array shape in the PHPDoc.
+- Services receive the `validated()` array, own business logic, wrap multi-write work in `DB::transaction()`, and return models, collections, or `CursorPage` results. Type the expected array shape in the PHPDoc.
 - Responses always go through a Resource; controllers never return models, arrays, or paginators directly. Keep the default `data` wrapping.
 - Validation failures return `422`, authorization returns `403` (Policy or Form Request `authorize()`), and missing route-bound models return `404`. Do not catch these in the controller.
 - Follow the existing `/api` prefix; the app does not version its routes.
+
+## Cursor pagination (list endpoints)
+
+Every collection endpoint uses keyset pagination. Do not use `LengthAwarePaginator`, `simplePaginate`, `cursorPaginate`, or a `per_page` input.
+
+- The only pagination input is `cursor`, validated as `nullable|uuid`. A malformed value fails with `422`.
+- The page size is fixed at `CursorPage::PER_PAGE` (20). It is not configurable by the client; ignore any `per_page` parameter.
+- The cursor is the public UUID of the last item on the current page. Never expose or accept an encoded Laravel cursor or the numeric `id`.
+- Order by `id` descending. The default and fallback is `orderByDesc('id')`, and `CursorPage` keysets on the primary key only. An endpoint that genuinely needs another business order must add a matching keyset implementation, never just an `orderBy` on top of the id keyset.
+- Resolve the cursor through the same filtered and scoped query the list uses, then apply `where('id', '<', $cursorId)`. A UUID that is missing, soft-deleted, outside the current search/scope, or owned by another user returns `404`.
+- Build the page with `App\Support\CursorPage::fromQuery($query, $filters['cursor'] ?? null)`. It fetches `PER_PAGE + 1` rows so it can tell whether a next page exists.
+- Respond with `data` plus `meta.next_cursor` only. Do not add `links`, `meta.total`, `prev_cursor`, or a previous URL.
+- API Resources still expose `uuid` and never the numeric `id`.
+
+```php
+// Controller
+$page = $this->postService->paginate($request->validated());
+
+return PostResource::collection($page->items)
+    ->additional(['meta' => ['next_cursor' => $page->nextCursor]]);
+```
+
+```php
+// Service
+$query = Post::query()
+    ->with('author')
+    ->when($filters['search'] ?? null, ...);
+
+return CursorPage::fromQuery($query, $filters['cursor'] ?? null);
+```
 
 ## Update endpoints (PUT only)
 

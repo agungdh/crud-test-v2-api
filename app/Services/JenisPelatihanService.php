@@ -3,25 +3,25 @@
 namespace App\Services;
 
 use App\Models\JenisPelatihan;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use App\Support\CursorPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\ValidationException;
 
 class JenisPelatihanService
 {
     /**
-     * @param  array{search?: string|null, per_page?: int|null}  $filters
+     * @param  array{search?: string|null, cursor?: string|null}  $filters
      */
-    public function paginate(array $filters): LengthAwarePaginator
+    public function paginate(array $filters): CursorPage
     {
         $search = $filters['search'] ?? null;
 
-        return JenisPelatihan::query()
+        $query = JenisPelatihan::query()
             ->when($search, function (Builder $query, string $search): void {
                 $query->whereRaw('lower(jenis_pelatihan) like ?', [mb_strtolower($search).'%']);
-            })
-            ->orderBy('jenis_pelatihan')
-            ->paginate($filters['per_page'] ?? 15);
+            });
+
+        return CursorPage::fromQuery($query, $filters['cursor'] ?? null);
     }
 
     /**

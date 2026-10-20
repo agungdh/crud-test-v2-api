@@ -20,9 +20,10 @@ class PegawaiController extends Controller
 
     public function index(ListPegawaiRequest $request): AnonymousResourceCollection
     {
-        return PegawaiResource::collection(
-            $this->pegawaiService->paginate($request->validated()),
-        );
+        $page = $this->pegawaiService->paginate($request->validated());
+
+        return PegawaiResource::collection($page->items)
+            ->additional(['meta' => ['next_cursor' => $page->nextCursor]]);
     }
 
     public function store(StorePegawaiRequest $request): JsonResponse

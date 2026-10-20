@@ -236,14 +236,9 @@ it('lists only the diklat of the authenticated pegawai with filters', function (
     $this->getJson('/api/diklat')
         ->assertOk()
         ->assertJsonCount(3, 'data')
-        ->assertJsonPath('meta.total', 3)
+        ->assertJsonPath('meta.next_cursor', null)
         ->assertJsonPath('data.0.nomor_surat', 'Diklat-Gamma')
         ->assertJsonPath('data.2.nomor_surat', 'Diklat-Alpha');
-
-    $this->getJson('/api/diklat?per_page=2')
-        ->assertOk()
-        ->assertJsonCount(2, 'data')
-        ->assertJsonPath('meta.total', 3);
 
     $this->getJson('/api/diklat?search=diklat-beta')
         ->assertOk()
@@ -273,6 +268,36 @@ it('lists only the diklat of the authenticated pegawai with filters', function (
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.nomor_surat', 'Diklat-Beta');
+});
+
+it('paginates diklat with a uuid cursor and keeps the ownership scope', function () {
+    $actor = diklatActor();
+
+    $ordered = Diklat::factory()
+        ->count(25)
+        ->create(['pegawai_id' => $actor->pegawai->id])
+        ->sortByDesc('id')
+        ->values();
+
+    $firstPageItems = $ordered->take(20);
+    $secondPageItems = $ordered->slice(20)->values();
+    $foreign = Diklat::factory()->create();
+
+    $this->getJson('/api/diklat?cursor='.$foreign->uuid)->assertNotFound();
+
+    $firstPage = $this->getJson('/api/diklat?per_page=100')
+        ->assertOk()
+        ->assertJsonCount(20, 'data');
+
+    expect($firstPage->json('data.*.uuid'))->toBe($firstPageItems->pluck('uuid')->all())
+        ->and($firstPage->json('meta.next_cursor'))->toBe($firstPageItems->last()->uuid);
+
+    $secondPage = $this->getJson('/api/diklat?cursor='.$firstPage->json('meta.next_cursor'))
+        ->assertOk()
+        ->assertJsonCount(5, 'data')
+        ->assertJsonPath('meta.next_cursor', null);
+
+    expect($secondPage->json('data.*.uuid'))->toBe($secondPageItems->pluck('uuid')->all());
 });
 
 it('shows an owned diklat by uuid', function () {

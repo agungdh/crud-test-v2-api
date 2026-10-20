@@ -20,9 +20,10 @@ class JenisPelatihanController extends Controller
 
     public function index(ListJenisPelatihanRequest $request): AnonymousResourceCollection
     {
-        return JenisPelatihanResource::collection(
-            $this->jenisPelatihanService->paginate($request->validated()),
-        );
+        $page = $this->jenisPelatihanService->paginate($request->validated());
+
+        return JenisPelatihanResource::collection($page->items)
+            ->additional(['meta' => ['next_cursor' => $page->nextCursor]]);
     }
 
     public function store(StoreJenisPelatihanRequest $request): JsonResponse

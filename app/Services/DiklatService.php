@@ -6,7 +6,7 @@ use App\Models\Diklat;
 use App\Models\JenisPelatihan;
 use App\Models\Pegawai;
 use App\Models\User;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use App\Support\CursorPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Arr;
@@ -26,14 +26,14 @@ class DiklatService
     }
 
     /**
-     * @param  array{search?: string|null, jenis_pelatihan_uuid?: string|null, dari_tanggal?: string|null, sampai_tanggal?: string|null, per_page?: int|null}  $filters
+     * @param  array{search?: string|null, jenis_pelatihan_uuid?: string|null, dari_tanggal?: string|null, sampai_tanggal?: string|null, cursor?: string|null}  $filters
      */
-    public function paginate(User $user, array $filters): LengthAwarePaginator
+    public function paginate(User $user, array $filters): CursorPage
     {
         $pegawai = $this->pegawaiOf($user);
         $search = $filters['search'] ?? null;
 
-        return Diklat::query()
+        $query = Diklat::query()
             ->with(['pegawai', 'jenisPelatihan'])
             ->where('pegawai_id', $pegawai->id)
             ->when($search, function (Builder $query, string $search): void {
@@ -52,10 +52,9 @@ class DiklatService
             })
             ->when($filters['sampai_tanggal'] ?? null, function (Builder $query, string $date): void {
                 $query->where('dari_tanggal_pelaksanaan', '<=', $date);
-            })
-            ->orderByDesc('dari_tanggal_pelaksanaan')
-            ->orderByDesc('id')
-            ->paginate($filters['per_page'] ?? 15);
+            });
+
+        return CursorPage::fromQuery($query, $filters['cursor'] ?? null);
     }
 
     /**

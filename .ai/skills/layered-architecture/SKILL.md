@@ -64,6 +64,40 @@ public function create(array $data): Post
 
 Every endpoint that accepts input gets its own Form Request, including list endpoints with filters. Endpoints that only use route-model binding (like `show`) do not need one.
 
+## Cursor pagination (list endpoints)
+
+Collection endpoints use keyset pagination. Never use `LengthAwarePaginator`, `simplePaginate`, `cursorPaginate`, or a `per_page` input.
+
+- Validate `cursor` as `nullable|uuid`. A malformed value returns `422`.
+- The page size is fixed at `CursorPage::PER_PAGE` (20) and cannot be changed by the client.
+- The cursor is the public UUID of the last item on the current page, never an encoded Laravel cursor and never the numeric `id`.
+- Order `id` descending. The default and fallback is `orderByDesc('id')`, and `CursorPage` keysets on the primary key only. An endpoint that genuinely needs another business order must add a matching keyset implementation, never just an `orderBy` on top of the id keyset.
+- Resolve the cursor through the same filtered and scoped query the list uses, then apply `where('id', '<', $cursorId)`. A UUID that is missing, soft-deleted, outside the search/scope, or owned by another user returns `404`.
+- Use `App\Support\CursorPage::fromQuery($query, $filters['cursor'] ?? null)`; it fetches `PER_PAGE + 1` rows to detect the next page.
+- Return `data` plus `meta.next_cursor` only, with no `links`, `meta.total`, `prev_cursor`, or previous URL. A full page ends with the last item's UUID; the final page returns `null`.
+
+```php
+// Form Request
+return [
+    'search' => ['nullable', 'string', 'max:255'],
+    'cursor' => ['nullable', 'uuid'],
+];
+
+// Service
+$query = Post::query()
+    ->when($filters['search'] ?? null, ...);
+
+return CursorPage::fromQuery($query, $filters['cursor'] ?? null);
+
+// Controller
+$page = $this->postService->paginate($request->validated());
+
+return PostResource::collection($page->items)
+    ->additional(['meta' => ['next_cursor' => $page->nextCursor]]);
+```
+
+Cover the first page, the next page via `cursor`, the final page (`meta.next_cursor` is `null`), a fixed size of 20 even when `per_page` is sent, an invalid cursor (`422`), and an unknown or out-of-scope cursor (`404`).
+
 ## Update semantics (PUT only)
 
 `PUT` is a full replacement, not a partial one:
@@ -148,9 +182,10 @@ class PostController extends Controller
 
     public function index(ListPostsRequest $request): AnonymousResourceCollection
     {
-        return PostResource::collection(
-            $this->postService->paginate($request->validated()),
-        );
+        $page = $this->postService->paginate($request->validated());
+
+        return PostResource::collection($page->items)
+            ->additional(['meta' => ['next_cursor' => $page->nextCursor]]);
     }
 
     public function store(StorePostRequest $request): JsonResponse
@@ -185,7 +220,7 @@ class PostController extends Controller
 
 ## Service skeleton
 
-Services query models, own transactions, and return models, collections, or paginators. Wrap multi-write work in `DB::transaction()`.
+Services query models, own transactions, and return models, collections, or `CursorPage` results. Wrap multi-write work in `DB::transaction()`.
 
 ```php
 <?php
@@ -193,24 +228,24 @@ Services query models, own transactions, and return models, collections, or pagi
 namespace App\Services;
 
 use App\Models\Post;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use App\Support\CursorPage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 class PostService
 {
     /**
-     * @param  array{per_page?: int, search?: string}  $filters
+     * @param  array{search?: string, cursor?: string}  $filters
      */
-    public function paginate(array $filters): LengthAwarePaginator
+    public function paginate(array $filters): CursorPage
     {
-        return Post::query()
+        $query = Post::query()
             ->when(
                 $filters['search'] ?? null,
                 fn (Builder $query, string $search): Builder => $query->where('title', 'like', "%{$search}%"),
-            )
-            ->latest()
-            ->paginate($filters['per_page'] ?? 15);
+            );
+
+        return CursorPage::fromQuery($query, $filters['cursor'] ?? null);
     }
 
     /**
@@ -274,7 +309,7 @@ class PostResource extends JsonResource
 ## Responses
 
 - Every API response is shaped by a Resource. Controllers never return models, arrays, or paginators directly.
-- Single resources are wrapped in `data` by default (`UserResource::make($user)`), and collections add pagination `links` and `meta`. Keep the default wrapping.
+- Single resources are wrapped in `data` by default (`UserResource::make($user)`). Collection endpoints return `data` plus `meta.next_cursor`; do not add `links`, `meta.total`, or a previous cursor.
 - Endpoints with a bespoke payload (like the login response) may use `response()->json([...])` while still embedding Resources for the model parts.
 - Follow the existing `/api` prefix; the app does not version its routes.
 
@@ -309,4 +344,5 @@ class PostResource extends JsonResource
 4. `DB::transaction()` wraps multi-write Service methods.
 5. Update routes accept `PUT` only; `PATCH` returns `405`, and `sometimes|nullable` appears only on password and file upload fields.
 6. Failed validation returns `422`, unauthorized returns `403`, missing models return `404` without explicit handling.
-7. Feature tests cover the new behavior; `vendor/bin/pint --dirty --format agent` and the relevant tests pass.
+7. List endpoints use `CursorPage` with a fixed 20 items, a UUID `cursor`, `orderByDesc('id')` fallback, and only `meta.next_cursor` in the response.
+8. Feature tests cover the new behavior; `vendor/bin/pint --dirty --format agent` and the relevant tests pass.

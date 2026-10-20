@@ -63,7 +63,7 @@ it('rejects a duplicate name case-insensitively', function () {
         ->assertJsonValidationErrors('jenis_pelatihan');
 });
 
-it('lists jenis pelatihan with search and pagination', function () {
+it('lists jenis pelatihan with search', function () {
     jenisPelatihanActor();
 
     JenisPelatihan::factory()->create(['jenis_pelatihan' => 'Alpha']);
@@ -73,18 +73,35 @@ it('lists jenis pelatihan with search and pagination', function () {
     $this->getJson('/api/jenis-pelatihan')
         ->assertOk()
         ->assertJsonCount(3, 'data')
-        ->assertJsonPath('meta.total', 3)
-        ->assertJsonPath('data.0.jenis_pelatihan', 'Alpha');
-
-    $this->getJson('/api/jenis-pelatihan?per_page=2')
-        ->assertOk()
-        ->assertJsonCount(2, 'data')
-        ->assertJsonPath('meta.total', 3);
+        ->assertJsonPath('meta.next_cursor', null)
+        ->assertJsonPath('data.0.jenis_pelatihan', 'Gamma');
 
     $this->getJson('/api/jenis-pelatihan?search=bet')
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.jenis_pelatihan', 'Beta');
+});
+
+it('paginates jenis pelatihan with a uuid cursor and a fixed page size', function () {
+    jenisPelatihanActor();
+
+    $ordered = JenisPelatihan::factory()->count(25)->create()->sortByDesc('id')->values();
+    $firstPageItems = $ordered->take(20);
+    $secondPageItems = $ordered->slice(20)->values();
+
+    $firstPage = $this->getJson('/api/jenis-pelatihan?per_page=100')
+        ->assertOk()
+        ->assertJsonCount(20, 'data');
+
+    expect($firstPage->json('data.*.uuid'))->toBe($firstPageItems->pluck('uuid')->all())
+        ->and($firstPage->json('meta.next_cursor'))->toBe($firstPageItems->last()->uuid);
+
+    $secondPage = $this->getJson('/api/jenis-pelatihan?cursor='.$firstPage->json('meta.next_cursor'))
+        ->assertOk()
+        ->assertJsonCount(5, 'data')
+        ->assertJsonPath('meta.next_cursor', null);
+
+    expect($secondPage->json('data.*.uuid'))->toBe($secondPageItems->pluck('uuid')->all());
 });
 
 it('shows a jenis pelatihan by uuid', function () {

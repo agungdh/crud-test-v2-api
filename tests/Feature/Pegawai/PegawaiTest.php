@@ -163,7 +163,7 @@ it('validates the field formats on create', function () {
         ->assertJsonValidationErrors(['email', 'tanggal_lahir', 'tmt', 'gender']);
 });
 
-it('lists pegawai with pagination and search', function () {
+it('lists pegawai with search', function () {
     authenticatePegawaiActor();
 
     Pegawai::factory()->create([
@@ -190,10 +190,10 @@ it('lists pegawai with pagination and search', function () {
         'bidang' => 'Keuangan',
     ]);
 
-    $this->getJson('/api/pegawai?per_page=2')
+    $this->getJson('/api/pegawai')
         ->assertOk()
-        ->assertJsonCount(2, 'data')
-        ->assertJsonPath('meta.total', 3);
+        ->assertJsonCount(3, 'data')
+        ->assertJsonPath('meta.next_cursor', null);
 
     $this->getJson('/api/pegawai?search=1980')
         ->assertOk()
@@ -220,6 +220,42 @@ it('lists pegawai with pagination and search', function () {
     $this->getJson('/api/pegawai?search=ahmad@')
         ->assertOk()
         ->assertJsonPath('data.0.nama', 'Ahmad');
+});
+
+it('paginates pegawai with a uuid cursor and a fixed page size', function () {
+    authenticatePegawaiActor();
+
+    $ordered = Pegawai::factory()->count(25)->create()->sortByDesc('id')->values();
+    $firstPageItems = $ordered->take(20);
+    $secondPageItems = $ordered->slice(20)->values();
+
+    $firstPage = $this->getJson('/api/pegawai?per_page=100')
+        ->assertOk()
+        ->assertJsonCount(20, 'data');
+
+    expect($firstPage->json('data.*.uuid'))->toBe($firstPageItems->pluck('uuid')->all())
+        ->and($firstPage->json('meta.next_cursor'))->toBe($firstPageItems->last()->uuid);
+
+    $secondPage = $this->getJson('/api/pegawai?cursor='.$firstPage->json('meta.next_cursor'))
+        ->assertOk()
+        ->assertJsonCount(5, 'data')
+        ->assertJsonPath('meta.next_cursor', null);
+
+    expect($secondPage->json('data.*.uuid'))->toBe($secondPageItems->pluck('uuid')->all());
+});
+
+it('returns 404 when the cursor uuid does not exist', function () {
+    authenticatePegawaiActor();
+
+    $this->getJson('/api/pegawai?cursor='.Str::uuid())->assertNotFound();
+});
+
+it('validates the cursor format', function () {
+    authenticatePegawaiActor();
+
+    $this->getJson('/api/pegawai?cursor=not-a-uuid')
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('cursor');
 });
 
 it('shows a pegawai by uuid', function () {
