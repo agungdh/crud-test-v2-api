@@ -34,7 +34,17 @@ class StoreDiklatRequest extends FormRequest
             'dari_tanggal_pelaksanaan' => ['required', 'date', 'before_or_equal:sampai_tanggal_pelaksanaan'],
             'sampai_tanggal_pelaksanaan' => ['required', 'date', 'after_or_equal:dari_tanggal_pelaksanaan'],
             'jumlah_jam_pelatihan' => ['required', 'integer', 'min:1'],
-            'berkas' => ['nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'],
+            'berkas_uuid' => [
+                'nullable',
+                'uuid',
+                Rule::exists('berkas_upload', 'uuid')->where(
+                    fn ($query) => $query
+                        ->where('user_id', $this->user()?->id)
+                        ->whereNull('consumed_at')
+                        ->whereNull('deleted_at')
+                        ->where('purge_at', '>', now()),
+                ),
+            ],
         ];
     }
 }

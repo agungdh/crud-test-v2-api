@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\BerkasUpload;
 use App\Models\Diklat;
 use App\Models\JenisPelatihan;
 use App\Models\Pegawai;
@@ -9,16 +10,19 @@ use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Throwable;
 
 class DiklatService
 {
     private const BERKAS_DISK = 's3';
+
+    public function __construct(private BerkasUploadService $berkasUploadService)
+    {
+        //
+    }
 
     /**
      * @param  array{search?: string|null, jenis_pelatihan_uuid?: string|null, dari_tanggal?: string|null, sampai_tanggal?: string|null, per_page?: int|null}  $filters
@@ -54,29 +58,47 @@ class DiklatService
     }
 
     /**
-     * @param  array{jenis_pelatihan_uuid: string, nomor_surat: string, materi_pengembangan: string, dari_tanggal_pelaksanaan: string, sampai_tanggal_pelaksanaan: string, jumlah_jam_pelatihan: int, berkas?: UploadedFile|null}  $data
+     * @param  array{jenis_pelatihan_uuid: string, nomor_surat: string, materi_pengembangan: string, dari_tanggal_pelaksanaan: string, sampai_tanggal_pelaksanaan: string, jumlah_jam_pelatihan: int, berkas_uuid?: string|null}  $data
      */
     public function create(User $user, array $data): Diklat
     {
         $pegawai = $this->pegawaiOf($user);
+        $upload = null;
+        $promoted = null;
 
-        return DB::transaction(function () use ($pegawai, $data): Diklat {
-            $diklat = $pegawai->diklat()->create([
-                ...Arr::except($data, ['jenis_pelatihan_uuid', 'berkas']),
-                'jenis_pelatihan_id' => $this->jenisPelatihanId($data['jenis_pelatihan_uuid']),
-            ]);
-
-            $berkas = $data['berkas'] ?? null;
-
-            if ($berkas instanceof UploadedFile) {
-                $diklat->update([
-                    'berkas_path' => $this->storeBerkas($diklat, $berkas),
-                    'berkas_filename' => $berkas->getClientOriginalName(),
+        try {
+            $diklat = DB::transaction(function () use ($user, $pegawai, $data, &$upload, &$promoted): Diklat {
+                $diklat = $pegawai->diklat()->create([
+                    ...Arr::except($data, ['jenis_pelatihan_uuid', 'berkas_uuid']),
+                    'jenis_pelatihan_id' => $this->jenisPelatihanId($data['jenis_pelatihan_uuid']),
                 ]);
+
+                $upload = $this->claimBerkas($user, $data['berkas_uuid'] ?? null);
+
+                if ($upload instanceof BerkasUpload) {
+                    $promoted = $this->berkasUploadService->promote($upload, "diklat/{$diklat->uuid}");
+
+                    $diklat->update([
+                        'berkas_path' => $promoted,
+                        'berkas_filename' => $upload->original_filename,
+                    ]);
+                }
+
+                return $diklat->load(['pegawai', 'jenisPelatihan']);
+            });
+        } catch (Throwable $exception) {
+            if (filled($promoted)) {
+                $this->berkasUploadService->discard($promoted);
             }
 
-            return $diklat->load(['pegawai', 'jenisPelatihan']);
-        });
+            throw $exception;
+        }
+
+        if ($upload instanceof BerkasUpload) {
+            $this->berkasUploadService->deleteTemporary($upload);
+        }
+
+        return $diklat;
     }
 
     public function show(User $user, Diklat $diklat): Diklat
@@ -87,31 +109,33 @@ class DiklatService
     }
 
     /**
-     * @param  array{jenis_pelatihan_uuid: string, nomor_surat: string, materi_pengembangan: string, dari_tanggal_pelaksanaan: string, sampai_tanggal_pelaksanaan: string, jumlah_jam_pelatihan: int, berkas?: UploadedFile|null}  $data
+     * @param  array{jenis_pelatihan_uuid: string, nomor_surat: string, materi_pengembangan: string, dari_tanggal_pelaksanaan: string, sampai_tanggal_pelaksanaan: string, jumlah_jam_pelatihan: int, berkas_uuid?: string|null}  $data
      */
     public function update(User $user, Diklat $diklat, array $data): Diklat
     {
         $this->ensureOwnedBy($user, $diklat);
 
+        $upload = null;
+        $promoted = null;
         $replacedPath = null;
-        $uploadedPath = null;
+        $replacesBerkas = array_key_exists('berkas_uuid', $data);
 
         try {
-            DB::transaction(function () use ($diklat, $data, &$replacedPath, &$uploadedPath): void {
+            DB::transaction(function () use ($user, $diklat, $data, $replacesBerkas, &$upload, &$promoted, &$replacedPath): void {
                 $attributes = [
-                    ...Arr::except($data, ['jenis_pelatihan_uuid', 'berkas']),
+                    ...Arr::except($data, ['jenis_pelatihan_uuid', 'berkas_uuid']),
                     'jenis_pelatihan_id' => $this->jenisPelatihanId($data['jenis_pelatihan_uuid']),
                 ];
 
-                if (array_key_exists('berkas', $data)) {
+                if ($replacesBerkas) {
                     $replacedPath = $diklat->berkas_path;
-                    $berkas = $data['berkas'];
+                    $upload = $this->claimBerkas($user, $data['berkas_uuid']);
 
-                    if ($berkas instanceof UploadedFile) {
-                        $uploadedPath = $this->storeBerkas($diklat, $berkas);
+                    if ($upload instanceof BerkasUpload) {
+                        $promoted = $this->berkasUploadService->promote($upload, "diklat/{$diklat->uuid}");
 
-                        $attributes['berkas_path'] = $uploadedPath;
-                        $attributes['berkas_filename'] = $berkas->getClientOriginalName();
+                        $attributes['berkas_path'] = $promoted;
+                        $attributes['berkas_filename'] = $upload->original_filename;
                     } else {
                         $attributes['berkas_path'] = null;
                         $attributes['berkas_filename'] = null;
@@ -121,14 +145,18 @@ class DiklatService
                 $diklat->update($attributes);
             });
         } catch (Throwable $exception) {
-            if (filled($uploadedPath)) {
-                Storage::disk(self::BERKAS_DISK)->delete($uploadedPath);
+            if (filled($promoted)) {
+                $this->berkasUploadService->discard($promoted);
             }
 
             throw $exception;
         }
 
-        if (filled($replacedPath)) {
+        if ($upload instanceof BerkasUpload) {
+            $this->berkasUploadService->deleteTemporary($upload);
+        }
+
+        if ($replacesBerkas && filled($replacedPath)) {
             Storage::disk(self::BERKAS_DISK)->delete($replacedPath);
         }
 
@@ -179,14 +207,14 @@ class DiklatService
     }
 
     /**
-     * Store the uploaded attachment on S3 and return its object key.
+     * Claim a pending upload for consumption, if one was provided.
      */
-    private function storeBerkas(Diklat $diklat, UploadedFile $berkas): string
+    private function claimBerkas(User $user, ?string $uuid): ?BerkasUpload
     {
-        return $berkas->storeAs(
-            "diklat/{$diklat->uuid}",
-            Str::ulid().'.'.$berkas->extension(),
-            self::BERKAS_DISK,
-        );
+        if (blank($uuid)) {
+            return null;
+        }
+
+        return $this->berkasUploadService->claim($user, $uuid);
     }
 }

@@ -1,11 +1,11 @@
 <?php
 
+use App\Models\BerkasUpload;
 use App\Models\Diklat;
 use App\Models\JenisPelatihan;
 use App\Models\Pegawai;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
@@ -84,10 +84,24 @@ function diklatPayloadKeys(array $payload): array
 function fakeTemporaryBerkasUrls(): void
 {
     Storage::fake('s3');
+    Storage::fake('s3-temp');
 
     Storage::disk('s3')->buildTemporaryUrlsUsing(
         fn (string $path, DateTimeInterface $expiration, array $options): string => "https://files.test/{$path}",
     );
+}
+
+function berkasUploadFor(User $actor, string $filename = 'sertifikat.pdf', string $contents = '%PDF-1.4 test'): BerkasUpload
+{
+    $upload = BerkasUpload::factory()->create([
+        'user_id' => $actor->id,
+        'object_key' => 'upload/'.Str::ulid().'.'.pathinfo($filename, PATHINFO_EXTENSION),
+        'original_filename' => $filename,
+    ]);
+
+    Storage::disk('s3-temp')->put($upload->object_key, $contents);
+
+    return $upload;
 }
 
 it('requires authentication', function () {
@@ -167,14 +181,14 @@ it('validates the diklat payload', function () {
         'dari_tanggal_pelaksanaan' => '2026-02-10',
         'sampai_tanggal_pelaksanaan' => '2026-02-01',
         'jumlah_jam_pelatihan' => 0,
-        'berkas' => 'not-a-file',
+        'berkas_uuid' => 'not-a-uuid',
     ]))
         ->assertUnprocessable()
         ->assertJsonValidationErrors([
             'dari_tanggal_pelaksanaan',
             'sampai_tanggal_pelaksanaan',
             'jumlah_jam_pelatihan',
-            'berkas',
+            'berkas_uuid',
         ]);
 
     $this->postJson('/api/diklat', diklatPayload($jenisPelatihan, [
@@ -371,16 +385,17 @@ it('never exposes the audit columns', function () {
     }
 });
 
-it('stores an attachment on s3 and exposes a temporary url', function () {
+it('attaches a presigned upload and promotes it to the permanent bucket', function () {
     fakeTemporaryBerkasUrls();
 
     $actor = diklatActor();
     $jenisPelatihan = JenisPelatihan::factory()->create();
+    $upload = berkasUploadFor($actor);
 
-    $response = $this->post('/api/diklat', [
+    $response = $this->postJson('/api/diklat', [
         ...diklatPayload($jenisPelatihan),
-        'berkas' => UploadedFile::fake()->create('sertifikat.pdf', 100, 'application/pdf'),
-    ], ['Accept' => 'application/json']);
+        'berkas_uuid' => $upload->uuid,
+    ]);
 
     $response->assertCreated()
         ->assertJsonPath('data.berkas_filename', 'sertifikat.pdf');
@@ -389,6 +404,14 @@ it('stores an attachment on s3 and exposes a temporary url', function () {
 
     expect($diklat->berkas_path)->toStartWith("diklat/{$diklat->uuid}/")
         ->and($response->json('data.berkas_url'))->toBe("https://files.test/{$diklat->berkas_path}");
+
+    Storage::disk('s3')->assertExists($diklat->berkas_path);
+    Storage::disk('s3-temp')->assertMissing($upload->object_key);
+
+    $upload->refresh();
+
+    expect($upload->consumed_at)->not->toBeNull()
+        ->and($upload->mime_type)->toBe('application/pdf');
 });
 
 it('keeps the stored attachment when the update omits it', function () {
@@ -423,12 +446,12 @@ it('replaces the stored attachment and removes the previous object', function ()
     Storage::disk('s3')->put($previousPath, 'lama');
 
     $diklat->update(['berkas_path' => $previousPath, 'berkas_filename' => 'lama.pdf']);
+    $upload = berkasUploadFor($actor, 'baru.pdf');
 
-    $this->post("/api/diklat/{$diklat->uuid}", [
+    $this->putJson("/api/diklat/{$diklat->uuid}", [
         ...diklatPayload($jenisPelatihan),
-        '_method' => 'PUT',
-        'berkas' => UploadedFile::fake()->create('baru.pdf', 100, 'application/pdf'),
-    ], ['Accept' => 'application/json'])->assertOk()
+        'berkas_uuid' => $upload->uuid,
+    ])->assertOk()
         ->assertJsonPath('data.berkas_filename', 'baru.pdf');
 
     $fresh = $diklat->fresh();
@@ -438,9 +461,12 @@ it('replaces the stored attachment and removes the previous object', function ()
 
     Storage::disk('s3')->assertMissing($previousPath);
     Storage::disk('s3')->assertExists($fresh->berkas_path);
+    Storage::disk('s3-temp')->assertMissing($upload->object_key);
+
+    expect($upload->fresh()->consumed_at)->not->toBeNull();
 });
 
-it('removes the stored attachment when berkas is null', function () {
+it('removes the stored attachment when berkas_uuid is null', function () {
     fakeTemporaryBerkasUrls();
 
     $actor = diklatActor();
@@ -454,7 +480,7 @@ it('removes the stored attachment when berkas is null', function () {
 
     $this->putJson("/api/diklat/{$diklat->uuid}", [
         ...diklatPayload($jenisPelatihan),
-        'berkas' => null,
+        'berkas_uuid' => null,
     ])
         ->assertOk()
         ->assertJsonPath('data.berkas_filename', null)
@@ -479,4 +505,80 @@ it('removes the attachment object when the diklat is deleted', function () {
     $this->deleteJson("/api/diklat/{$diklat->uuid}")->assertNoContent();
 
     Storage::disk('s3')->assertMissing($path);
+});
+
+it('rejects an upload that belongs to another user', function () {
+    fakeTemporaryBerkasUrls();
+
+    diklatActor();
+    $jenisPelatihan = JenisPelatihan::factory()->create();
+    $upload = berkasUploadFor(User::factory()->create());
+
+    $this->postJson('/api/diklat', [
+        ...diklatPayload($jenisPelatihan),
+        'berkas_uuid' => $upload->uuid,
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('berkas_uuid');
+
+    expect(Diklat::query()->count())->toBe(0)
+        ->and($upload->fresh()->consumed_at)->toBeNull();
+});
+
+it('rejects an upload whose object was never uploaded', function () {
+    fakeTemporaryBerkasUrls();
+
+    $actor = diklatActor();
+    $jenisPelatihan = JenisPelatihan::factory()->create();
+    $upload = BerkasUpload::factory()->create(['user_id' => $actor->id]);
+
+    $this->postJson('/api/diklat', [
+        ...diklatPayload($jenisPelatihan),
+        'berkas_uuid' => $upload->uuid,
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('berkas_uuid');
+
+    expect(Diklat::query()->count())->toBe(0)
+        ->and($upload->fresh()->consumed_at)->toBeNull();
+});
+
+it('rejects an upload with an unsupported file type', function () {
+    fakeTemporaryBerkasUrls();
+
+    $actor = diklatActor();
+    $jenisPelatihan = JenisPelatihan::factory()->create();
+    $upload = berkasUploadFor($actor, 'sertifikat.pdf', 'plain text');
+
+    $this->postJson('/api/diklat', [
+        ...diklatPayload($jenisPelatihan),
+        'berkas_uuid' => $upload->uuid,
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('berkas_uuid');
+
+    expect(Diklat::query()->count())->toBe(0)
+        ->and($upload->fresh()->consumed_at)->toBeNull();
+});
+
+it('does not allow an upload to be consumed twice', function () {
+    fakeTemporaryBerkasUrls();
+
+    $actor = diklatActor();
+    $jenisPelatihan = JenisPelatihan::factory()->create();
+    $upload = berkasUploadFor($actor);
+
+    $this->postJson('/api/diklat', [
+        ...diklatPayload($jenisPelatihan),
+        'berkas_uuid' => $upload->uuid,
+    ])->assertCreated();
+
+    $this->postJson('/api/diklat', [
+        ...diklatPayload($jenisPelatihan, ['nomor_surat' => 'Diklat-002']),
+        'berkas_uuid' => $upload->uuid,
+    ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('berkas_uuid');
+
+    expect(Diklat::query()->count())->toBe(1);
 });

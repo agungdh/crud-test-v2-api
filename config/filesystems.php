@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\S3\ConditionalWriteSignatureProvider;
+
 return [
 
     /*
@@ -57,6 +59,22 @@ return [
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
             'temporary_url_ttl' => env('AWS_TEMPORARY_URL_TTL', 15),
+            'throw' => false,
+            'report' => false,
+        ],
+
+        's3-temp' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION'),
+            'bucket' => env('AWS_TEMP_BUCKET', 'crud-test-temp'),
+            'url' => env('AWS_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'signature_provider' => [ConditionalWriteSignatureProvider::class, 'make'],
+            'upload_ttl' => (int) env('AWS_TEMP_UPLOAD_TTL', 15),
+            'purge_ttl' => (int) env('AWS_TEMP_PURGE_TTL', 1440),
             'throw' => false,
             'report' => false,
         ],
