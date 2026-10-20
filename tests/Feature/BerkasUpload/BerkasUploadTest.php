@@ -8,58 +8,82 @@ use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
-function fakeBerkasUploadUrls(): void
+/**
+ * @return object{options: array<string, mixed>}
+ */
+function fakeBerkasUploadUrls(): object
 {
+    $captured = new stdClass;
+    $captured->options = [];
+
     Storage::fake('s3-temp');
 
     Storage::disk('s3-temp')->buildTemporaryUploadUrlsUsing(
-        fn (string $path, DateTimeInterface $expiration, array $options): array => [
-            'url' => "https://temp.test/{$path}",
-            'headers' => [
-                'Host' => ['temp.test'],
-                'If-None-Match' => ['*'],
-            ],
-        ],
+        function (string $path, DateTimeInterface $expiration, array $options) use ($captured): array {
+            $captured->options = $options;
+
+            return [
+                'url' => "https://temp.test/{$path}",
+                'headers' => [
+                    'Host' => ['temp.test'],
+                    'If-None-Match' => ['*'],
+                    'Content-Length' => [(string) ($options['ContentLength'] ?? '')],
+                ],
+            ];
+        },
     );
+
+    return $captured;
 }
 
 it('requires authentication', function () {
     $this->postJson('/api/berkas-upload', [])->assertUnauthorized();
 });
 
-it('creates a one-time presigned upload url', function () {
-    fakeBerkasUploadUrls();
+it('creates a presigned upload url for the declared size', function () {
+    $captured = fakeBerkasUploadUrls();
 
     Sanctum::actingAs(User::factory()->create());
 
-    $response = $this->postJson('/api/berkas-upload', ['filename' => 'sertifikat.pdf']);
+    $response = $this->postJson('/api/berkas-upload', ['size' => 1024]);
 
     $response->assertCreated()
-        ->assertJsonPath('data.filename', 'sertifikat.pdf')
+        ->assertJsonPath('data.max_size', 10 * 1024 * 1024)
         ->assertJsonPath('data.headers.If-None-Match', '*')
         ->assertJsonStructure([
-            'data' => ['path', 'filename', 'upload_url', 'headers', 'expires_at'],
+            'data' => ['path', 'upload_url', 'headers', 'expires_at', 'max_size'],
         ])
-        ->assertJsonMissingPath('data.uuid');
+        ->assertJsonMissingPath('data.filename')
+        ->assertJsonMissingPath('data.headers.Content-Length');
 
     $path = $response->json('data.path');
 
     expect($path)->toMatch(BerkasPath::PATTERN)
         ->and(BerkasPath::epochMillis($path))->toBeGreaterThan(now()->subMinute()->getTimestampMs())
-        ->and($response->json('data.headers'))->not->toHaveKey('Host')
-        ->and($response->json('data.upload_url'))->toBe("https://temp.test/{$path}");
+        ->and($response->json('data.upload_url'))->toBe("https://temp.test/{$path}")
+        ->and($captured->options['ContentLength'])->toBe(1024);
 });
 
-it('rejects unsupported filenames', function () {
+it('rejects an invalid file size', function () {
     fakeBerkasUploadUrls();
 
     Sanctum::actingAs(User::factory()->create());
 
-    $this->postJson('/api/berkas-upload', ['filename' => 'dokumen.exe'])
+    $this->postJson('/api/berkas-upload', [])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('filename');
+        ->assertJsonValidationErrors('size')
+        ->assertJsonPath('errors.size.0', 'The file size is required.');
 
-    $this->postJson('/api/berkas-upload', ['filename' => '../sertifikat.pdf'])
+    $this->postJson('/api/berkas-upload', ['size' => 0])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('filename');
+        ->assertJsonValidationErrors('size');
+
+    $this->postJson('/api/berkas-upload', ['size' => 'besar'])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('size');
+
+    $this->postJson('/api/berkas-upload', ['size' => 10 * 1024 * 1024 + 1])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('size')
+        ->assertJsonPath('errors.size.0', 'The file may not be greater than 10 MB.');
 });

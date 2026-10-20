@@ -3,7 +3,7 @@
 use App\Support\S3\ConditionalWriteSignatureProvider;
 use Aws\S3\S3Client;
 
-it('signs the if-none-match header into presigned upload urls', function () {
+it('signs the if-none-match and content-length headers into presigned upload urls', function () {
     $client = new S3Client([
         'version' => 'latest',
         'region' => 'us-east-1',
@@ -17,10 +17,12 @@ it('signs the if-none-match header into presigned upload urls', function () {
         'Bucket' => 'temp-bucket',
         'Key' => 'upload/file.pdf',
         'IfNoneMatch' => '*',
+        'ContentLength' => 1024,
     ]);
 
     $request = $client->createPresignedRequest($command, '+5 minutes');
 
     expect($request->getHeaderLine('If-None-Match'))->toBe('*')
-        ->and((string) $request->getUri())->toContain('X-Amz-SignedHeaders=host%3Bif-none-match');
+        ->and($request->getHeaderLine('Content-Length'))->toBe('1024')
+        ->and((string) $request->getUri())->toContain('X-Amz-SignedHeaders=content-length%3Bhost%3Bif-none-match');
 });

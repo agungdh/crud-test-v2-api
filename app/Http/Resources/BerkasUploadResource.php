@@ -16,10 +16,10 @@ class BerkasUploadResource extends JsonResource
     {
         return [
             'path' => $this->resource['path'],
-            'filename' => $this->resource['filename'],
             'upload_url' => $this->resource['upload_url'],
             'headers' => $this->headers($this->resource['headers']),
             'expires_at' => $this->resource['expires_at'],
+            'max_size' => $this->resource['max_size'],
         ];
     }
 
@@ -34,7 +34,7 @@ class BerkasUploadResource extends JsonResource
         $normalized = [];
 
         foreach ($headers as $name => $values) {
-            if (mb_strtolower($name) === 'host') {
+            if (in_array(mb_strtolower($name), ['host', 'content-length'], true)) {
                 continue;
             }
 

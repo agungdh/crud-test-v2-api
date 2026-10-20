@@ -15,7 +15,7 @@ class BerkasUploadService
 
     private const PERMANENT_DISK = 's3';
 
-    private const MAX_BYTES = 10 * 1024 * 1024;
+    private const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
 
     /**
      * @var array<string, string>
@@ -29,8 +29,11 @@ class BerkasUploadService
     /**
      * Create a presigned upload for an empty temporary object.
      *
-     * @param  array{filename: string}  $data
-     * @return array{path: string, filename: string, upload_url: string, headers: array<string, array<int, string>>, expires_at: string}
+     * The declared size is signed into the URL as Content-Length, so the
+     * storage server rejects an upload whose body does not match it.
+     *
+     * @param  array{size: int}  $data
+     * @return array{path: string, upload_url: string, headers: array<string, array<int, string>>, expires_at: string, max_size: int}
      */
     public function presign(array $data): array
     {
@@ -42,15 +45,18 @@ class BerkasUploadService
         $presigned = Storage::disk(self::TEMP_DISK)->temporaryUploadUrl(
             $path,
             $expiresAt,
-            ['IfNoneMatch' => '*'],
+            [
+                'IfNoneMatch' => '*',
+                'ContentLength' => (int) $data['size'],
+            ],
         );
 
         return [
             'path' => $path,
-            'filename' => $data['filename'],
             'upload_url' => $presigned['url'],
             'headers' => $presigned['headers'],
             'expires_at' => $expiresAt->toIso8601ZuluString(),
+            'max_size' => $this->maxBytes(),
         ];
     }
 
@@ -73,9 +79,9 @@ class BerkasUploadService
 
         $size = (int) $tempDisk->size($temporaryPath);
 
-        if ($size > self::MAX_BYTES) {
+        if ($size > $this->maxBytes()) {
             throw ValidationException::withMessages([
-                'berkas_path' => 'The file may not be greater than 10 MB.',
+                'berkas_path' => 'The file may not be greater than '.$this->maxMegabytes().' MB.',
             ]);
         }
 
@@ -141,5 +147,17 @@ class BerkasUploadService
         fclose($stream);
 
         return (new finfo(FILEINFO_MIME_TYPE))->buffer($prefix ?: '') ?: 'application/octet-stream';
+    }
+
+    private function maxBytes(): int
+    {
+        return (int) config('filesystems.disks.s3-temp.max_bytes', self::DEFAULT_MAX_BYTES);
+    }
+
+    private function maxMegabytes(): int|float
+    {
+        $megabytes = $this->maxBytes() / (1024 * 1024);
+
+        return fmod($megabytes, 1.0) === 0.0 ? (int) $megabytes : round($megabytes, 2);
     }
 }

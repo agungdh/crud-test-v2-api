@@ -23,11 +23,11 @@ class StoreBerkasUploadRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'filename' => [
+            'size' => [
                 'required',
-                'string',
-                'max:255',
-                'regex:/^[^\x00-\x1F\/\\\\]+\.(pdf|jpe?g|png)$/i',
+                'integer',
+                'min:1',
+                'max:'.$this->maxBytes(),
             ],
         ];
     }
@@ -40,7 +40,22 @@ class StoreBerkasUploadRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'filename.regex' => 'The filename must end with pdf, jpg, jpeg, or png.',
+            'size.required' => 'The file size is required.',
+            'size.integer' => 'The file size must be an integer number of bytes.',
+            'size.min' => 'The file may not be empty.',
+            'size.max' => 'The file may not be greater than '.$this->maxMegabytes().' MB.',
         ];
+    }
+
+    private function maxBytes(): int
+    {
+        return (int) config('filesystems.disks.s3-temp.max_bytes', 10 * 1024 * 1024);
+    }
+
+    private function maxMegabytes(): int|float
+    {
+        $megabytes = $this->maxBytes() / (1024 * 1024);
+
+        return fmod($megabytes, 1.0) === 0.0 ? (int) $megabytes : round($megabytes, 2);
     }
 }
