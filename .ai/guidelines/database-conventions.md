@@ -39,7 +39,15 @@ $table->index('uuid', 'users_uuid_hash_index', 'hash');
 
 ## Foreign keys
 
-- Database columns keep the numeric form: `user_id`, `post_id`, referencing `id`, with the usual foreign key constraint.
+- Database columns keep the numeric form: `user_id`, `post_id`, referencing `id`.
+- Every foreign key restricts both operations: deleting or changing a referenced row that still has children must fail.
+
+```php
+$table->foreignId('user_id')->constrained()->restrictOnDelete()->restrictOnUpdate();
+```
+
+- `restrictOnDelete()` alone leaves `ON UPDATE` at Laravel's default `NO ACTION`, so always pair it with `restrictOnUpdate()`.
+- Never use `cascadeOnDelete()`, `cascadeOnUpdate()`, `nullOnDelete()`, `setNullOnUpdate()`, or `noAction()`. Application deletes are soft deletes, and the database rejects an accidental hard delete or `id` change of a referenced row.
 - Requests and responses use the UUID form: `user_uuid`, `post_uuid`.
 - Form Requests validate the UUID with an existence rule that ignores soft-deleted rows:
 
@@ -107,9 +115,9 @@ class Post extends Model
 ## Profile tables (one-to-one with users)
 
 - Credentials stay in `users`; profile data lives in its own table, such as `pegawai`. `users` keeps no display name. User accounts are created, updated, and soft-deleted through the profile CRUD, so every user owns exactly one profile.
-- A profile table has a required `user_id` with `restrictOnDelete()` and a partial unique index on `user_id` where `deleted_at is null`, so a user has at most one active profile.
+- A profile table has a required `user_id` with `restrictOnDelete()->restrictOnUpdate()` and a partial unique index on `user_id` where `deleted_at is null`, so a user has at most one active profile.
 - Derived login identifiers are synced by the Service whenever their source column changes; for example `users.username` always mirrors `pegawai.nip`.
-- Deleting the profile soft-deletes its user in the same transaction. The FK stays `restrict` so an accidental hard delete is rejected.
+- Deleting the profile soft-deletes its user in the same transaction. The FK stays `restrict` on delete and update so an accidental hard delete or `id` change is rejected.
 - Case-insensitive unique checks are validated with an explicit `lower(column) = lower(?)` rule, because `Rule::unique()` compares the raw column first; the partial unique index is a backstop, not the user-facing message.
 
 ## Search indexes
@@ -125,5 +133,5 @@ create index pegawai_nama_lower_index on pegawai (lower(nama) text_pattern_ops) 
 ## Tests
 
 - The suite runs against PostgreSQL, not SQLite, so hash indexes and `timestamptz` behavior are verified.
-- Schema coverage asserts every timestamp column uses a time zone, the UUID hash index exists without a unique constraint, `deleted_at` is indexed, and the audit columns match the primary key type.
+- Schema coverage asserts every timestamp column uses a time zone, the UUID hash index exists without a unique constraint, `deleted_at` is indexed, the audit columns match the primary key type, and every foreign key restricts both delete and update.
 - Feature coverage asserts UUID v4 generation, audit values on create, update, delete, and restore, and that the numeric `id` and audit columns are absent from API responses.

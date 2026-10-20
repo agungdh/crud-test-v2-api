@@ -15,8 +15,8 @@ return new class extends Migration
         Schema::create('diklat', function (Blueprint $table) {
             $table->id();
             $table->uuid('uuid');
-            $table->foreignId('pegawai_id')->constrained('pegawai')->restrictOnDelete();
-            $table->foreignId('jenis_pelatihan_id')->constrained('jenis_pelatihan')->restrictOnDelete();
+            $table->foreignId('pegawai_id')->constrained('pegawai')->restrictOnDelete()->restrictOnUpdate();
+            $table->foreignId('jenis_pelatihan_id')->constrained('jenis_pelatihan')->restrictOnDelete()->restrictOnUpdate();
             $table->string('nomor_surat');
             $table->string('materi_pengembangan');
             $table->date('dari_tanggal_pelaksanaan');

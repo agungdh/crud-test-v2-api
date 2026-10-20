@@ -65,13 +65,14 @@ it('indexes the soft delete column', function () {
     expect($index)->not->toBeNull();
 });
 
-it('restricts deleting a user that still has a pegawai', function () {
-    $rule = DB::table('information_schema.referential_constraints')
+it('restricts deleting and updating a user that still has a pegawai', function () {
+    $rules = DB::table('information_schema.referential_constraints')
         ->where('constraint_schema', 'public')
         ->where('constraint_name', 'pegawai_user_id_foreign')
-        ->value('delete_rule');
+        ->first(['delete_rule', 'update_rule']);
 
-    expect($rule)->toBe('RESTRICT');
+    expect($rules->delete_rule)->toBe('RESTRICT')
+        ->and($rules->update_rule)->toBe('RESTRICT');
 });
 
 it('removes the name column from users', function () {

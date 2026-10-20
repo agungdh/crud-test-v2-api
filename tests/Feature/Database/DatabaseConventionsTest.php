@@ -27,6 +27,20 @@ it('stores every timestamp column with a time zone', function () {
     expect($offending)->toBeEmpty();
 });
 
+it('restricts deleting and updating referenced rows for every foreign key', function () {
+    $constraints = DB::table('information_schema.referential_constraints')
+        ->where('constraint_schema', 'public')
+        ->get(['constraint_name', 'delete_rule', 'update_rule']);
+
+    expect($constraints)->not->toBeEmpty();
+
+    $offending = $constraints
+        ->reject(fn (object $constraint) => $constraint->delete_rule === 'RESTRICT' && $constraint->update_rule === 'RESTRICT')
+        ->pluck('constraint_name');
+
+    expect($offending)->toBeEmpty();
+});
+
 it('exposes the uuid column with a hash index and no unique constraint', function () {
     $uuidType = DB::table('information_schema.columns')
         ->where('table_schema', 'public')
