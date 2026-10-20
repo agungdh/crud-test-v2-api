@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Support\BerkasPath;
+use Aws\S3\PostObjectV4;
 use finfo;
+use Illuminate\Filesystem\AwsS3V3Adapter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -15,8 +17,6 @@ class BerkasUploadService
 
     private const PERMANENT_DISK = 's3';
 
-    private const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
-
     /**
      * @var array<string, string>
      */
@@ -27,13 +27,13 @@ class BerkasUploadService
     ];
 
     /**
-     * Create a presigned upload for an empty temporary object.
+     * Create a presigned POST for an empty temporary object.
      *
-     * The declared size is signed into the URL as Content-Length, so the
-     * storage server rejects an upload whose body does not match it.
+     * The requested maximum size is embedded in the S3 policy as a
+     * content-length-range condition, so S3 rejects an oversized upload.
      *
-     * @param  array{size: int}  $data
-     * @return array{path: string, upload_url: string, headers: array<string, array<int, string>>, expires_at: string, max_size: int}
+     * @param  array{max_size: int}  $data
+     * @return array{path: string, upload_url: string, fields: array<string, string>, expires_at: string, max_size: int}
      */
     public function presign(array $data): array
     {
@@ -41,22 +41,30 @@ class BerkasUploadService
         $expiresAt = now()->addMinutes(
             (int) config('filesystems.disks.s3-temp.upload_ttl', 15),
         );
+        $bucket = (string) config('filesystems.disks.s3-temp.bucket');
+        $maxSize = (int) $data['max_size'];
 
-        $presigned = Storage::disk(self::TEMP_DISK)->temporaryUploadUrl(
-            $path,
-            $expiresAt,
+        /** @var AwsS3V3Adapter $disk */
+        $disk = Storage::disk(self::TEMP_DISK);
+
+        $post = new PostObjectV4(
+            $disk->getClient(),
+            $bucket,
+            ['key' => $path],
             [
-                'IfNoneMatch' => '*',
-                'ContentLength' => (int) $data['size'],
+                ['bucket' => $bucket],
+                ['eq', '$key', $path],
+                ['content-length-range', 1, $maxSize],
             ],
+            $expiresAt,
         );
 
         return [
             'path' => $path,
-            'upload_url' => $presigned['url'],
-            'headers' => $presigned['headers'],
+            'upload_url' => $post->getFormAttributes()['action'],
+            'fields' => $post->getFormInputs(),
             'expires_at' => $expiresAt->toIso8601ZuluString(),
-            'max_size' => $this->maxBytes(),
+            'max_size' => $maxSize,
         ];
     }
 
@@ -74,14 +82,6 @@ class BerkasUploadService
         if (BerkasPath::isExpired($temporaryPath, $purgeTtl) || ! $tempDisk->exists($temporaryPath)) {
             throw ValidationException::withMessages([
                 'berkas_path' => 'The file has not been uploaded or has expired.',
-            ]);
-        }
-
-        $size = (int) $tempDisk->size($temporaryPath);
-
-        if ($size > $this->maxBytes()) {
-            throw ValidationException::withMessages([
-                'berkas_path' => 'The file may not be greater than '.$this->maxMegabytes().' MB.',
             ]);
         }
 
@@ -147,17 +147,5 @@ class BerkasUploadService
         fclose($stream);
 
         return (new finfo(FILEINFO_MIME_TYPE))->buffer($prefix ?: '') ?: 'application/octet-stream';
-    }
-
-    private function maxBytes(): int
-    {
-        return (int) config('filesystems.disks.s3-temp.max_bytes', self::DEFAULT_MAX_BYTES);
-    }
-
-    private function maxMegabytes(): int|float
-    {
-        $megabytes = $this->maxBytes() / (1024 * 1024);
-
-        return fmod($megabytes, 1.0) === 0.0 ? (int) $megabytes : round($megabytes, 2);
     }
 }

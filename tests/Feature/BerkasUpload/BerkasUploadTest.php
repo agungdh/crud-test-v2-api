@@ -8,82 +8,67 @@ use Laravel\Sanctum\Sanctum;
 
 uses(RefreshDatabase::class);
 
-/**
- * @return object{options: array<string, mixed>}
- */
-function fakeBerkasUploadUrls(): object
-{
-    $captured = new stdClass;
-    $captured->options = [];
+beforeEach(function () {
+    config()->set('filesystems.disks.s3-temp', [
+        'driver' => 's3',
+        'key' => 'test-key',
+        'secret' => 'test-secret',
+        'region' => 'us-east-1',
+        'bucket' => 'temp-bucket',
+        'endpoint' => 'http://127.0.0.1:9000',
+        'use_path_style_endpoint' => true,
+        'upload_ttl' => 15,
+        'purge_ttl' => 1440,
+        'throw' => false,
+        'report' => false,
+    ]);
 
-    Storage::fake('s3-temp');
-
-    Storage::disk('s3-temp')->buildTemporaryUploadUrlsUsing(
-        function (string $path, DateTimeInterface $expiration, array $options) use ($captured): array {
-            $captured->options = $options;
-
-            return [
-                'url' => "https://temp.test/{$path}",
-                'headers' => [
-                    'Host' => ['temp.test'],
-                    'If-None-Match' => ['*'],
-                    'Content-Length' => [(string) ($options['ContentLength'] ?? '')],
-                ],
-            ];
-        },
-    );
-
-    return $captured;
-}
+    Storage::forgetDisk('s3-temp');
+});
 
 it('requires authentication', function () {
     $this->postJson('/api/berkas-upload', [])->assertUnauthorized();
 });
 
-it('creates a presigned upload url for the declared size', function () {
-    $captured = fakeBerkasUploadUrls();
-
+it('uses the requested maximum size as the s3 policy limit', function () {
     Sanctum::actingAs(User::factory()->create());
 
-    $response = $this->postJson('/api/berkas-upload', ['size' => 1024]);
+    $maxSize = 100 * 1024 * 1024;
+
+    $response = $this->postJson('/api/berkas-upload', ['max_size' => $maxSize]);
 
     $response->assertCreated()
-        ->assertJsonPath('data.max_size', 10 * 1024 * 1024)
-        ->assertJsonPath('data.headers.If-None-Match', '*')
+        ->assertJsonPath('data.max_size', $maxSize)
+        ->assertJsonPath('data.upload_url', 'http://127.0.0.1:9000/temp-bucket')
         ->assertJsonStructure([
-            'data' => ['path', 'upload_url', 'headers', 'expires_at', 'max_size'],
+            'data' => ['path', 'upload_url', 'fields', 'expires_at', 'max_size'],
         ])
         ->assertJsonMissingPath('data.filename')
-        ->assertJsonMissingPath('data.headers.Content-Length');
+        ->assertJsonMissingPath('data.headers');
 
     $path = $response->json('data.path');
+    $fields = $response->json('data.fields');
+    $policy = json_decode(base64_decode($fields['Policy']), true);
 
     expect($path)->toMatch(BerkasPath::PATTERN)
         ->and(BerkasPath::epochMillis($path))->toBeGreaterThan(now()->subMinute()->getTimestampMs())
-        ->and($response->json('data.upload_url'))->toBe("https://temp.test/{$path}")
-        ->and($captured->options['ContentLength'])->toBe(1024);
+        ->and($fields['key'])->toBe($path)
+        ->and($policy['conditions'])->toContain(['content-length-range', 1, $maxSize]);
 });
 
-it('rejects an invalid file size', function () {
-    fakeBerkasUploadUrls();
-
+it('rejects an invalid maximum file size', function () {
     Sanctum::actingAs(User::factory()->create());
 
     $this->postJson('/api/berkas-upload', [])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('size')
-        ->assertJsonPath('errors.size.0', 'The file size is required.');
+        ->assertJsonValidationErrors('max_size')
+        ->assertJsonPath('errors.max_size.0', 'The maximum file size is required.');
 
-    $this->postJson('/api/berkas-upload', ['size' => 0])
+    $this->postJson('/api/berkas-upload', ['max_size' => 0])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('size');
+        ->assertJsonValidationErrors('max_size');
 
-    $this->postJson('/api/berkas-upload', ['size' => 'besar'])
+    $this->postJson('/api/berkas-upload', ['max_size' => 'besar'])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors('size');
-
-    $this->postJson('/api/berkas-upload', ['size' => 10 * 1024 * 1024 + 1])
-        ->assertUnprocessable()
-        ->assertJsonValidationErrors('size')
-        ->assertJsonPath('errors.size.0', 'The file may not be greater than 10 MB.');
+        ->assertJsonValidationErrors('max_size');
 });

@@ -1,7 +1,5 @@
 <?php
 
-use App\Support\S3\ConditionalWriteSignatureProvider;
-
 return [
 
     /*
@@ -72,10 +70,8 @@ return [
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'signature_provider' => [ConditionalWriteSignatureProvider::class, 'make'],
             'upload_ttl' => (int) env('AWS_TEMP_UPLOAD_TTL', 15),
             'purge_ttl' => (int) env('AWS_TEMP_PURGE_TTL', 1440),
-            'max_bytes' => (int) env('AWS_TEMP_MAX_BYTES', 10 * 1024 * 1024),
             'throw' => false,
             'report' => false,
         ],
